@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#0a0a14" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<title>밤의 생존</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #05050c;
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: none;
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", sans-serif;
+    color: #f0e8d8;
+  }
+  #game { display: block; position: fixed; inset: 0; }
+
+  /* HUD */
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0;
+    padding: calc(env(safe-area-inset-top) + 10px) 14px 0;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    pointer-events: none; z-index: 5;
+  }
+  .panel {
+    background: rgba(10,10,22,0.55);
+    border: 1px solid rgba(255,180,80,0.25);
+    border-radius: 12px;
+    padding: 8px 12px;
+    backdrop-filter: blur(4px);
+  }
+  .label { font-size: 11px; letter-spacing: 1px; color: #a89878; margin-bottom: 4px; }
+  .bar { width: 130px; height: 10px; border-radius: 6px; background: rgba(255,255,255,0.08); overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 100%; border-radius: 6px; transition: width 0.12s linear; }
+  #fireFill { background: linear-gradient(90deg,#ff5a1f,#ffb347); }
+  #hpFill { background: linear-gradient(90deg,#ff2d55,#ff7a8a); }
+  #clock { text-align: right; }
+  #clockTime { font-size: 26px; font-weight: 800; letter-spacing: 1px; line-height: 1; text-shadow: 0 0 12px rgba(255,180,80,0.4); }
+  #wave { font-size: 11px; color: #a89878; margin-top: 4px; }
+  #woodCount { font-size: 22px; font-weight: 800; }
+
+  /* Center overlays */
+  .overlay {
+    position: fixed; inset: 0; z-index: 20;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 24px;
+    background: radial-gradient(ellipse at center, rgba(10,10,25,0.7), rgba(3,3,10,0.95));
+  }
+  .overlay h1 { font-size: 48px; font-weight: 900; letter-spacing: 2px; margin-bottom: 6px;
+    background: linear-gradient(180deg,#ffd98a,#ff7a3c); -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-shadow: 0 0 40px rgba(255,140,50,0.3); }
+  .overlay h2 { font-size: 34px; font-weight: 900; margin-bottom: 8px; }
+  .overlay p { font-size: 15px; color: #b8a988; line-height: 1.7; max-width: 340px; margin-bottom: 8px; }
+  .btn {
+    margin-top: 22px; padding: 15px 44px; font-size: 19px; font-weight: 800;
+    border: none; border-radius: 14px; color: #1a0e00;
+    background: linear-gradient(180deg,#ffcf6b,#ff9a3c);
+    box-shadow: 0 8px 24px rgba(255,140,50,0.35); cursor: pointer;
+  }
+  .btn:active { transform: translateY(2px); }
+  .stat { font-size: 16px; color: #d8c8a8; margin: 2px 0; }
+  .hint { margin-top: 18px; font-size: 13px; color: #8a7a5a; }
+  [hidden] { display: none !important; }
+
+  /* Joystick */
+  #stick { position: fixed; z-index: 8; pointer-events: none; }
+  #stickBase, #stickKnob { position: absolute; border-radius: 50%; transform: translate(-50%,-50%); }
+  #stickBase { width: 120px; height: 120px; background: rgba(255,255,255,0.06); border: 2px solid rgba(255,200,120,0.25); }
+  #stickKnob { width: 54px; height: 54px; background: rgba(255,200,120,0.35); border: 2px solid rgba(255,220,160,0.6); }
+
+  #flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 15; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="flash"></div>
+
+<div id="hud" hidden>
+  <div class="panel">
+    <div class="label">🔥 모닥불</div>
+    <div class="bar"><i id="fireFill"></i></div>
+    <div class="label" style="margin:8px 0 4px">❤️ 체력</div>
+    <div class="bar"><i id="hpFill"></i></div>
+  </div>
+  <div class="panel" id="clock">
+    <div id="clockTime">21:00</div>
+    <div id="wave">밤이 시작됐다</div>
+    <div style="margin-top:6px">🪵 <span id="woodCount">0</span></div>
+  </div>
+</div>
+
+<div id="stick" hidden><div id="stickBase"></div><div id="stickKnob"></div></div>
+
+<div class="overlay" id="startScreen">
+  <h1>밤의 생존</h1>
+  <p>모닥불 곁에서 아침까지 버텨라.<br>
+  어둠 속 <b>🪵 장작</b>을 주워 와 불을 살리고,<br>
+  불이 꺼지면 <b>괴물</b>이 너를 덮친다.</p>
+  <p class="hint">화면을 드래그해서 이동 · 장작 위로 가면 자동으로 줍기<br>불 근처에 서 있으면 장작이 불에 들어간다</p>
+  <button class="btn" id="startBtn">밤 시작</button>
+</div>
+
+<div class="overlay" id="endScreen" hidden>
+  <h2 id="endTitle"></h2>
+  <p id="endMsg"></p>
+  <div class="stat" id="endStats"></div>
+  <button class="btn" id="restartBtn">다시 도전</button>
+</div>
+
+<script>
+"use strict";
+(function () {
+  const cv = document.getElementById("game");
+  const ctx = cv.getContext("2d");
+  const $ = (id) => document.getElementById(id);
+  const fireFill = $("fireFill"), hpFill = $("hpFill"), woodCount = $("woodCount");
+  const clockTime = $("clockTime"), wave = $("wave");
+
+  // ---- World / view ----
+  let W = 0, H = 0, DPR = 1;
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = W * DPR; cv.height = H * DPR;
+    cv.style.width = W + "px"; cv.style.height = H + "px";
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  // World is larger than screen; camera follows player.
+  const WORLD = 1400; // half-size of square world (so world spans -1400..1400)
+
+  // ---- Game state ----
+  const G = {
+    running: false,
+    t: 0,                 // elapsed seconds
+    night: 600,           // night length in seconds (21:00 -> 06:00 mapped)
+    fire: 100,            // 0..100 fuel
+    hp: 100,
+    wood: 0,              // carried wood
+    player: { x: 0, y: 0, r: 16, ang: -Math.PI / 2 },
+    fireX: 0, fireY: 0, fireR: 30,
+    monsters: [],
+    logs: [],             // wood pickups in world
+    parts: [],            // particles
+    spawnTimer: 0,
+    woodTimer: 0,
+    kills: 0,
+    woodBurned: 0,
+    shake: 0,
+  };
+
+  const SPEED = 215;          // player px/s
+  const SAFE_PAD = 70;        // bright radius beyond fireR where monsters won't enter
+
+  // ---- Input: drag joystick anywhere ----
+  const input = { active: false, id: null, sx: 0, sy: 0, dx: 0, dy: 0, mag: 0 };
+  const stick = document.getElementById("stick");
+  const stickBase = document.getElementById("stickBase");
+  const stickKnob = document.getElementById("stickKnob");
+
+  function setStick(px, py, kx, ky) {
+    stick.hidden = false;
+    stickBase.style.left = px + "px"; stickBase.style.top = py + "px";
+    stickKnob.style.left = kx + "px"; stickKnob.style.top = ky + "px";
+  }
+  function startDrag(x, y, id) {
+    input.active = true; input.id = id; input.sx = x; input.sy = y;
+    input.dx = 0; input.dy = 0; input.mag = 0;
+    setStick(x, y, x, y);
+  }
+  function moveDrag(x, y) {
+    let dx = x - input.sx, dy = y - input.sy;
+    const max = 60;
+    const d = Math.hypot(dx, dy);
+    if (d > max) { dx = dx / d * max; dy = dy / d * max; }
+    input.dx = dx / max; input.dy = dy / max;
+    input.mag = Math.min(1, d / max);
+    setStick(input.sx, input.sy, input.sx + dx, input.sy + dy);
+  }
+  function endDrag() {
+    input.active = false; input.id = null; input.mag = 0; input.dx = 0; input.dy = 0;
+    stick.hidden = true;
+  }
+
+  cv.addEventListener("touchstart", (e) => {
+    if (!G.running) return;
+    if (input.active) return;
+    const t = e.changedTouches[0];
+    startDrag(t.clientX, t.clientY, t.identifier);
+    e.preventDefault();
+  }, { passive: false });
+  cv.addEventListener("touchmove", (e) => {
+    if (!input.active) return;
+    for (const t of e.changedTouches) {
+      if (t.identifier === input.id) { moveDrag(t.clientX, t.clientY); break; }
+    }
+    e.preventDefault();
+  }, { passive: false });
+  cv.addEventListener("touchend", (e) => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === input.id) { endDrag(); break; }
+    }
+    e.preventDefault();
+  }, { passive: false });
+  cv.addEventListener("touchcancel", () => endDrag());
+
+  // Mouse fallback (desktop testing)
+  cv.addEventListener("mousedown", (e) => { if (G.running) startDrag(e.clientX, e.clientY, "m"); });
+  window.addEventListener("mousemove", (e) => { if (input.active) moveDrag(e.clientX, e.clientY); });
+  window.addEventListener("mouseup", () => { if (input.active && input.id === "m") endDrag(); });
+
+  // ---- Spawning ----
+  function spawnMonster() {
+    const a = Math.random() * Math.PI * 2;
+    const dist = 700 + Math.random() * 400;
+    const hp = 2 + Math.floor(G.t / 90); // tougher over time
+    G.monsters.push({
+      x: G.fireX + Math.cos(a) * dist,
+      y: G.fireY + Math.sin(a) * dist,
+      r: 14 + Math.random() * 6,
+      spd: 55 + Math.random() * 45 + G.t * 0.08,
+      hp, maxhp: hp,
+      wob: Math.random() * 6.28,
+      hit: 0,
+    });
+  }
+  function spawnLog() {
+    const a = Math.random() * Math.PI * 2;
+    const dist = 260 + Math.random() * 520;
+    G.logs.push({ x: G.fireX + Math.cos(a) * dist, y: G.fireY + Math.sin(a) * dist, r: 13, bob: Math.random() * 6.28 });
+  }
+
+  function reset() {
+    G.t = 0; G.fire = 100; G.hp = 100; G.wood = 0;
+    G.player.x = 0; G.player.y = 90; G.player.ang = -Math.PI / 2;
+    G.monsters.length = 0; G.logs.length = 0; G.parts.length = 0;
+    G.spawnTimer = 2; G.woodTimer = 0; G.kills = 0; G.woodBurned = 0; G.shake = 0;
+    for (let i = 0; i < 5; i++) spawnLog();
+  }
+
+  // ---- Particles ----
+  function ember(x, y, n, col) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, s = 20 + Math.random() * 80;
+      G.parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 20, life: 0.5 + Math.random() * 0.5, max: 1, col: col || "#ffae42", r: 1 + Math.random() * 2.5 });
+    }
+  }
+
+  // ---- Update ----
+  let last = 0;
+  function frame(ts) {
+    if (!last) last = ts;
+    let dt = (ts - last) / 1000; last = ts;
+    if (dt > 0.05) dt = 0.05;
+    if (G.running) update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  function update(dt) {
+    G.t += dt;
+    if (G.t >= G.night) { return endGame(true); }
+
+    // Player move
+    const p = G.player;
+    if (input.mag > 0.05) {
+      p.x += input.dx * SPEED * dt;
+      p.y += input.dy * SPEED * dt;
+      p.ang = Math.atan2(input.dy, input.dx);
+      // clamp to world
+      p.x = Math.max(-WORLD, Math.min(WORLD, p.x));
+      p.y = Math.max(-WORLD, Math.min(WORLD, p.y));
+    }
+
+    // Fire fuel drains; faster as night deepens
+    const drain = 2.4 + G.t / 220;
+    G.fire = Math.max(0, G.fire - drain * dt);
+
+    // Stand near fire to feed wood into it
+    const fdist = Math.hypot(p.x - G.fireX, p.y - G.fireY);
+    if (fdist < G.fireR + 60 && G.wood > 0) {
+      // feed 1 wood per ~0.35s
+      G._feed = (G._feed || 0) + dt;
+      if (G._feed > 0.3) {
+        G._feed = 0;
+        G.wood--; G.woodBurned++;
+        G.fire = Math.min(100, G.fire + 14);
+        ember(G.fireX, G.fireY, 14, "#ffd24a");
+        G.shake = Math.min(G.shake, 0);
+      }
+    }
+
+    // Bright radius depends on fuel
+    const bright = G.fireR + SAFE_PAD * (0.35 + 0.65 * (G.fire / 100));
+
+    // Pick up logs
+    for (let i = G.logs.length - 1; i >= 0; i--) {
+      const l = G.logs[i];
+      l.bob += dt * 3;
+      if (Math.hypot(p.x - l.x, p.y - l.y) < p.r + l.r + 6) {
+        G.logs.splice(i, 1);
+        G.wood++;
+        ember(l.x, l.y, 8, "#caa46a");
+      }
+    }
+
+    // Spawn logs over time (keep some available)
+    G.woodTimer -= dt;
+    if (G.woodTimer <= 0 && G.logs.length < 8) {
+      G.woodTimer = 2.2;
+      spawnLog();
+    }
+
+    // Spawn monsters; rate increases through the night
+    G.spawnTimer -= dt;
+    const rate = Math.max(0.5, 2.6 - G.t / 130);
+    if (G.spawnTimer <= 0) {
+      G.spawnTimer = rate;
+      spawnMonster();
+      if (G.t > 240) spawnMonster();
+    }
+
+    // Monsters
+    let damaging = false;
+    for (let i = G.monsters.length - 1; i >= 0; i--) {
+      const m = G.monsters[i];
+      m.wob += dt * 4;
+      const tx = p.x, ty = p.y; // chase player
+      let dx = tx - m.x, dy = ty - m.y;
+      const d = Math.hypot(dx, dy) || 1;
+      dx /= d; dy /= d;
+
+      // Repelled by bright fire zone: if monster inside bright radius, push out
+      const mfd = Math.hypot(m.x - G.fireX, m.y - G.fireY);
+      const inLight = mfd < bright;
+      if (inLight && G.fire > 5) {
+        // push away from fire, take burn damage
+        const ox = (m.x - G.fireX) / (mfd || 1), oy = (m.y - G.fireY) / (mfd || 1);
+        m.x += ox * 60 * dt; m.y += oy * 60 * dt;
+        m.hp -= dt * 3;
+        if (Math.random() < 0.3) ember(m.x, m.y, 1, "#ff7a2a");
+        if (m.hp <= 0) { killMonster(i); continue; }
+      } else {
+        const wob = Math.sin(m.wob) * 0.4;
+        m.x += (dx + Math.cos(m.wob) * 0.18) * m.spd * dt;
+        m.y += (dy + Math.sin(m.wob) * 0.18) * m.spd * dt;
+      }
+      if (m.hit > 0) m.hit -= dt;
+
+      // Hit player
+      if (Math.hypot(p.x - m.x, p.y - m.y) < p.r + m.r) {
+        damaging = true;
+      }
+    }
+    if (damaging) {
+      G.hp -= 22 * dt;
+      G.shake = Math.min(14, G.shake + 40 * dt);
+      if (G.hp <= 0) { G.hp = 0; return endGame(false); }
+    }
+
+    // When fire is dead, things get scary fast (drain hp slightly from dread? no—monsters do it)
+    G.shake = Math.max(0, G.shake - dt * 30);
+
+    // Particles
+    for (let i = G.parts.length - 1; i >= 0; i--) {
+      const q = G.parts[i];
+      q.life -= dt;
+      if (q.life <= 0) { G.parts.splice(i, 1); continue; }
+      q.x += q.vx * dt; q.y += q.vy * dt; q.vy += 30 * dt;
+    }
+
+    updateHUD(bright);
+  }
+
+  function killMonster(i) {
+    const m = G.monsters[i];
+    ember(m.x, m.y, 12, "#7a5cff");
+    G.monsters.splice(i, 1);
+    G.kills++;
+  }
+
+  function updateHUD(bright) {
+    fireFill.style.width = G.fire + "%";
+    hpFill.style.width = G.hp + "%";
+    woodCount.textContent = G.wood;
+    // Clock: 21:00 -> 06:00 across the night (9 hours)
+    const frac = G.t / G.night;
+    const totalMin = 21 * 60 + frac * 9 * 60;
+    let hh = Math.floor(totalMin / 60) % 24;
+    let mm = Math.floor(totalMin % 60);
+    clockTime.textContent = String(hh).padStart(2, "0") + ":" + String(mm).padStart(2, "0");
+    let label = "밤이 깊어간다";
+    if (frac > 0.85) label = "곧 동이 튼다…";
+    else if (frac > 0.6) label = "가장 어두운 시간";
+    else if (frac < 0.15) label = "밤이 시작됐다";
+    if (G.fire < 20) label = "🔥 불이 꺼져간다!";
+    wave.textContent = label;
+  }
+
+  // ---- Render ----
+  function render() {
+    ctx.clearRect(0, 0, W, H);
+    // camera centered on player
+    const p = G.player;
+    let camx = p.x, camy = p.y;
+    let sx = (Math.random() - 0.5) * G.shake, sy = (Math.random() - 0.5) * G.shake;
+    const cx = W / 2 - camx + sx, cy = H / 2 - camy + sy;
+
+    // base ground
+    const dark = G.running ? darkness() : 1;
+    ctx.fillStyle = "#06060e";
+    ctx.fillRect(0, 0, W, H);
+
+    // ground texture (subtle grid of dots) only near visible
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    drawGround();
+
+    if (G.running) {
+      // logs
+      for (const l of G.logs) drawLog(l);
+      // fire
+      drawFire();
+      // monsters
+      for (const m of G.monsters) drawMonster(m);
+      // player
+      drawPlayer(p);
+      // particles
+      for (const q of G.parts) {
+        ctx.globalAlpha = Math.max(0, q.life / q.max);
+        ctx.fillStyle = q.col;
+        ctx.beginPath(); ctx.arc(q.x, q.y, q.r, 0, 6.283); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+
+    // Darkness overlay with light holes (fire + player flashlight)
+    if (G.running) drawDarkness(cx, cy);
+  }
+
+  function drawGround() {
+    // draw faint dots within camera range
+    const p = G.player;
+    const step = 80;
+    const minx = Math.floor((p.x - W) / step) * step;
+    const maxx = Math.ceil((p.x + W) / step) * step;
+    const miny = Math.floor((p.y - H) / step) * step;
+    const maxy = Math.ceil((p.y + H) / step) * step;
+    ctx.fillStyle = "rgba(120,120,160,0.06)";
+    for (let x = minx; x <= maxx; x += step) {
+      for (let y = miny; y <= maxy; y += step) {
+        ctx.beginPath(); ctx.arc(x, y, 1.5, 0, 6.283); ctx.fill();
+      }
+    }
+    // world border
+    ctx.strokeStyle = "rgba(120,80,200,0.15)";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(-WORLD, -WORLD, WORLD * 2, WORLD * 2);
+  }
+
+  function drawFire() {
+    const t = performance.now() / 1000;
+    const f = G.fire / 100;
+    const glow = G.fireR + 30 + Math.sin(t * 8) * 4;
+    // glow
+    const g = ctx.createRadialGradient(G.fireX, G.fireY, 4, G.fireX, G.fireY, 220 * (0.4 + 0.6 * f));
+    g.addColorStop(0, "rgba(255,170,70," + (0.55 * f + 0.1) + ")");
+    g.addColorStop(0.5, "rgba(255,120,40," + (0.18 * f) + ")");
+    g.addColorStop(1, "rgba(255,120,40,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(G.fireX, G.fireY, 220 * (0.4 + 0.6 * f), 0, 6.283); ctx.fill();
+
+    // logs base
+    ctx.fillStyle = "#3a2410";
+    ctx.save(); ctx.translate(G.fireX, G.fireY);
+    ctx.rotate(0.4); ctx.fillRect(-22, -5, 44, 10);
+    ctx.rotate(-0.9); ctx.fillRect(-22, -5, 44, 10);
+    ctx.restore();
+
+    // flames
+    if (G.fire > 1) {
+      for (let i = 0; i < 3; i++) {
+        const h = (18 + i * 6) * (0.4 + 0.6 * f) * (1 + Math.sin(t * 9 + i) * 0.12);
+        const wob = Math.sin(t * 7 + i * 2) * 5;
+        ctx.fillStyle = i === 0 ? "#ffe07a" : i === 1 ? "#ff9a32" : "#ff5a1f";
+        ctx.beginPath();
+        ctx.moveTo(G.fireX - (10 - i * 2.5) , G.fireY + 4);
+        ctx.quadraticCurveTo(G.fireX + wob, G.fireY - h, G.fireX + (10 - i * 2.5), G.fireY + 4);
+        ctx.fill();
+      }
+      if (Math.random() < 0.5 * f) ember(G.fireX + (Math.random() - 0.5) * 14, G.fireY - 6, 1, "#ffba4a");
+    } else {
+      // embers only
+      ctx.fillStyle = "#5a2a10";
+      ctx.beginPath(); ctx.arc(G.fireX, G.fireY, 8, 0, 6.283); ctx.fill();
+    }
+  }
+
+  function drawLog(l) {
+    const yo = Math.sin(l.bob) * 3;
+    ctx.save(); ctx.translate(l.x, l.y + yo);
+    // soft halo so it's findable in the gloom
+    const g = ctx.createRadialGradient(0, 0, 2, 0, 0, 34);
+    g.addColorStop(0, "rgba(210,170,110,0.5)");
+    g.addColorStop(1, "rgba(210,170,110,0)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 34, 0, 6.283); ctx.fill();
+    ctx.rotate(0.5);
+    ctx.fillStyle = "#7a5226"; ctx.fillRect(-13, -6, 26, 12);
+    ctx.fillStyle = "#9a6e38"; ctx.fillRect(-13, -6, 6, 12);
+    ctx.fillStyle = "#caa46a";
+    ctx.beginPath(); ctx.arc(11, 0, 5, 0, 6.283); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawMonster(m) {
+    const sq = 1 + Math.sin(m.wob) * 0.08;
+    ctx.save(); ctx.translate(m.x, m.y); ctx.scale(1, sq);
+    // body
+    ctx.fillStyle = m.hit > 0 ? "#ffffff" : "#241a3a";
+    ctx.beginPath(); ctx.arc(0, 0, m.r, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = "rgba(140,90,230,0.6)"; ctx.lineWidth = 2; ctx.stroke();
+    // eyes
+    ctx.fillStyle = "#ff3b5c";
+    ctx.beginPath(); ctx.arc(-m.r * 0.35, -m.r * 0.15, 3, 0, 6.283); ctx.fill();
+    ctx.beginPath(); ctx.arc(m.r * 0.35, -m.r * 0.15, 3, 0, 6.283); ctx.fill();
+    ctx.restore();
+    // hp pip
+    if (m.hp < m.maxhp) {
+      ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(m.x - 12, m.y - m.r - 9, 24, 4);
+      ctx.fillStyle = "#ff4d6a"; ctx.fillRect(m.x - 12, m.y - m.r - 9, 24 * (m.hp / m.maxhp), 4);
+    }
+  }
+
+  function drawPlayer(p) {
+    ctx.save(); ctx.translate(p.x, p.y);
+    // shadow
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.beginPath(); ctx.ellipse(0, p.r * 0.7, p.r * 0.9, p.r * 0.4, 0, 0, 6.283); ctx.fill();
+    // body
+    ctx.rotate(p.ang + Math.PI / 2);
+    ctx.fillStyle = "#ffd98a";
+    ctx.beginPath(); ctx.arc(0, 0, p.r, 0, 6.283); ctx.fill();
+    ctx.fillStyle = "#1a1020";
+    ctx.beginPath(); ctx.arc(-5, -4, 2.4, 0, 6.283); ctx.fill();
+    ctx.beginPath(); ctx.arc(5, -4, 2.4, 0, 6.283); ctx.fill();
+    // little torch carried (points forward)
+    ctx.fillStyle = "#7a5226"; ctx.fillRect(-2, -p.r - 10, 4, 12);
+    ctx.fillStyle = "#ffb347";
+    ctx.beginPath(); ctx.arc(0, -p.r - 12, 5, 0, 6.283); ctx.fill();
+    ctx.restore();
+  }
+
+  function darkness() { return 1; }
+
+  // Dark overlay: fill screen dark, then "cut" light circles using destination-out
+  function drawDarkness(cx, cy) {
+    const p = G.player;
+    const f = G.fire / 100;
+    // screen-space positions
+    const fsx = G.fireX + cx, fsy = G.fireY + cy;
+    const psx = p.x + cx, psy = p.y + cy;
+
+    ctx.save();
+    // overall night veil
+    let veil = 0.93 - 0.05 * f;
+    ctx.fillStyle = "rgba(2,2,8," + veil + ")";
+    ctx.fillRect(0, 0, W, H);
+
+    // cut light using destination-out gradients
+    ctx.globalCompositeOperation = "destination-out";
+
+    // fire light
+    const fr = 90 + 230 * (0.35 + 0.65 * f);
+    let fg = ctx.createRadialGradient(fsx, fsy, 10, fsx, fsy, fr);
+    fg.addColorStop(0, "rgba(0,0,0,1)");
+    fg.addColorStop(0.6, "rgba(0,0,0,0.7)");
+    fg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = fg;
+    ctx.beginPath(); ctx.arc(fsx, fsy, fr, 0, 6.283); ctx.fill();
+
+    // player's small torch glow
+    const pr = 130;
+    let pg = ctx.createRadialGradient(psx, psy, 6, psx, psy, pr);
+    pg.addColorStop(0, "rgba(0,0,0,0.85)");
+    pg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = pg;
+    ctx.beginPath(); ctx.arc(psx, psy, pr, 0, 6.283); ctx.fill();
+
+    ctx.restore();
+
+    // warm tint over fire light
+    ctx.save();
+    ctx.globalCompositeOperation = "soft-light";
+    let wg = ctx.createRadialGradient(fsx, fsy, 10, fsx, fsy, fr);
+    wg.addColorStop(0, "rgba(255,160,60," + (0.5 * f) + ")");
+    wg.addColorStop(1, "rgba(255,160,60,0)");
+    ctx.fillStyle = wg;
+    ctx.beginPath(); ctx.arc(fsx, fsy, fr, 0, 6.283); ctx.fill();
+    ctx.restore();
+  }
+
+  // ---- Flow ----
+  const startScreen = document.getElementById("startScreen");
+  const endScreen = document.getElementById("endScreen");
+  const hud = document.getElementById("hud");
+  const flash = document.getElementById("flash");
+
+  function startGame() {
+    reset();
+    G.running = true;
+    startScreen.hidden = true;
+    endScreen.hidden = true;
+    hud.hidden = false;
+    flash.style.opacity = "0";
+  }
+
+  function endGame(won) {
+    G.running = false;
+    endDrag();
+    hud.hidden = true;
+    endScreen.hidden = false;
+    if (won) {
+      flash.style.transition = "opacity 1.2s ease";
+      flash.style.opacity = "0.9";
+      setTimeout(() => { flash.style.opacity = "0"; }, 700);
+      document.getElementById("endTitle").textContent = "🌅 동이 텄다!";
+      document.getElementById("endTitle").style.color = "#ffd98a";
+      document.getElementById("endMsg").textContent = "긴 밤을 살아남았다. 아침 햇살이 괴물들을 몰아낸다.";
+    } else {
+      document.getElementById("endTitle").textContent = "💀 어둠에 삼켜졌다";
+      document.getElementById("endTitle").style.color = "#ff6b8a";
+      const frac = G.t / G.night;
+      const totalMin = 21 * 60 + frac * 9 * 60;
+      let hh = Math.floor(totalMin / 60) % 24, mm = Math.floor(totalMin % 60);
+      document.getElementById("endMsg").textContent =
+        String(hh).padStart(2, "0") + ":" + String(mm).padStart(2, "0") + "까지 버텼다.";
+    }
+    document.getElementById("endStats").innerHTML =
+      "🪵 태운 장작 " + G.woodBurned + " · 🔥 처치 " + G.kills;
+  }
+
+  document.getElementById("startBtn").addEventListener("click", startGame);
+  document.getElementById("restartBtn").addEventListener("click", startGame);
+
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
