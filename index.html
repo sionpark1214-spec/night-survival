@@ -876,7 +876,7 @@
         for (let i = G.allies.length - 1; i >= 0; i--) { const a = G.allies[i];
           if (a.kind === "miner") {
             if (Math.random() < 0.2) { G.pops.push({ x: a.x, y: a.y, h: 20, t: 1.2, txt: "광부 사망", col: "#ff6b8a" }); G.allies.splice(i, 1); }
-            else { G.res.stone += 5; G.res.iron += 5; }
+            else { G.res.stone += 10; G.res.wood += 10; }
           } }
         G.day++; G.phase = "day"; G.timer = CFG.dayBase + (G.day - 1) * CFG.dayInc;
       }
