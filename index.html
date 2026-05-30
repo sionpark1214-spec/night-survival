@@ -222,7 +222,8 @@
   let SPHERE_GEO, BOX_GEO, DISC_GEO;
   let groundMathPlane;
   let fxCanvas, fxCtx, fxDPR = 1, _vproj;
-  const meshPools = { zombie: [], ally: [], bullet: [], drop: [], mine: [], lava: [], turret: [], pwall: [], warm: [] };
+  const meshPools = { zombie: [], ally: [], bullet: [], drop: [], mine: [], lava: [], turret: [], pwall: [], warm: [], tree: [], rock: [] };
+  const tapStarts = {};
 
   function resize() {
     W = window.innerWidth; H = window.innerHeight;
@@ -321,6 +322,7 @@
     stations: [], panelKey: "", panelCtx: null,
     allyRegenT: 20, medicFrac: 0,
     gunFiring: false,
+    nodes: [],
   };
   function rand(a, b) { return a + Math.random() * (b - a); }
 
@@ -409,6 +411,9 @@
     $("panel").className = ""; $("panelTitle").className = ""; $("placeBtn").style.display = "none"; $("inv").hidden = true;
     generateMap();
     build3DWorld();
+    G.nodes = [];
+    for (let i = 0; i < 12; i++) G.nodes.push(makeNode("tree"));
+    for (let i = 0; i < 9; i++) G.nodes.push(makeNode("rock"));
     const c = G.campfire;
     G.player = { x: c.x, y: c.y + 30, r: CFG.playerR, ang: 0, hp: 100, temp: 100,
       weapon: "knife", gun: null, ammo: 0, reloading: 0, fireCd: 0, knifeCd: 0, swing: 0, hurtFlash: 0 };
@@ -456,7 +461,7 @@
   });
   window.addEventListener("keyup", (e) => { G.keys[e.key.toLowerCase()] = false; });
   cv.addEventListener("mousemove", (e) => { G.mouse.sx = e.clientX; G.mouse.sy = e.clientY; });
-  cv.addEventListener("mousedown", () => { ensureAudio(); if (G.state === "playing") { G.mouse.down = true; fireOnce(); } });
+  cv.addEventListener("mousedown", () => { ensureAudio(); if (G.state === "playing") { if (tryHarvest(G.mouse.sx, G.mouse.sy)) return; G.mouse.down = true; fireOnce(); } });
   window.addEventListener("mouseup", () => { G.mouse.down = false; });
 
   // ----- Touch (mobile) -----
@@ -473,6 +478,7 @@
     ensureAudio();
     if (G.state !== "playing") return;
     for (const t of e.changedTouches) {
+      tapStarts[t.identifier] = { x: t.clientX, y: t.clientY, t: performance.now() };
       if (t.clientX < W / 2 && G.move.id === null) {
         G.move.id = t.identifier; G.move.sx = t.clientX; G.move.sy = t.clientY; G.move.dx = 0; G.move.dy = 0; G.move.mag = 0;
         showStick("moveStick", t.clientX, t.clientY, t.clientX, t.clientY);
@@ -502,6 +508,9 @@
   }, { passive: false });
   function endTouch(e) {
     for (const t of e.changedTouches) {
+      const ts = tapStarts[t.identifier];
+      if (ts) { const moved = Math.hypot(t.clientX - ts.x, t.clientY - ts.y), held = performance.now() - ts.t;
+        if (moved < 16 && held < 280) tryHarvest(t.clientX, t.clientY); delete tapStarts[t.identifier]; }
       if (t.identifier === G.move.id) { G.move.id = null; G.move.mag = 0; hideStick("moveStick"); }
       else if (t.identifier === G.aim.id) { G.aim.id = null; G.aim.active = false; hideStick("aimStick"); }
     }
@@ -526,14 +535,47 @@
     $("btnKnife").classList.toggle("active", G.player.weapon === "knife");
     $("btnGun").classList.toggle("active", G.player.weapon === "gun");
   }
-  function mouseWorld() {
-    const p = G.player;
-    if (!raycaster || !groundMathPlane) return { x: p.x + Math.cos(p.ang), y: p.y + Math.sin(p.ang) };
-    const ndc = new THREE.Vector2((G.mouse.sx / W) * 2 - 1, -(G.mouse.sy / H) * 2 + 1);
+  function screenToWorld(sx, sy) {
+    if (!raycaster || !groundMathPlane) return null;
+    const ndc = new THREE.Vector2((sx / W) * 2 - 1, -(sy / H) * 2 + 1);
     raycaster.setFromCamera(ndc, camera);
     const pt = new THREE.Vector3();
     if (raycaster.ray.intersectPlane(groundMathPlane, pt)) return { x: pt.x, y: pt.z };
-    return { x: p.x + Math.cos(p.ang), y: p.y + Math.sin(p.ang) };
+    return null;
+  }
+  function mouseWorld() {
+    const p = G.player;
+    return screenToWorld(G.mouse.sx, G.mouse.sy) || { x: p.x + Math.cos(p.ang), y: p.y + Math.sin(p.ang) };
+  }
+  // ----- harvest nodes (trees / rocks) -----
+  function insideAnyHouse(x, y, pad) {
+    for (const ho of G.houses) if (x > ho.x - pad && x < ho.x + ho.w + pad && y > ho.y - pad && y < ho.y + ho.h + pad) return true;
+    return false;
+  }
+  function makeNode(type) {
+    let x, y, tries = 0;
+    do { x = rand(-1600, 1600); y = rand(-1600, 1600); tries++; } while (insideAnyHouse(x, y, 70) && tries < 40);
+    return { type, x, y, hp: 8, cd: 0, shake: 0 };
+  }
+  function harvestNode(nd) {
+    nd.cd = 0.4; nd.shake = 0.3;
+    if (nd.type === "tree") { G.res.wood++; G.pops.push({ x: nd.x, y: nd.y, h: 44, t: 0.8, txt: "🪵+1", col: RES_COL.wood }); }
+    else { if (Math.random() < 0.25) { G.res.iron++; G.pops.push({ x: nd.x, y: nd.y, h: 30, t: 0.8, txt: "🔩+1", col: RES_COL.iron }); }
+      else { G.res.stone++; G.pops.push({ x: nd.x, y: nd.y, h: 30, t: 0.8, txt: "🪨+1", col: RES_COL.stone }); } }
+    nd.hp--;
+    if (nd.hp <= 0) { const i = G.nodes.indexOf(nd); if (i >= 0) G.nodes.splice(i, 1); G.nodes.push(makeNode(nd.type)); }
+  }
+  function tryHarvest(sx, sy) {
+    if (G.state !== "playing" || !G.player || !G.nodes.length) return false;
+    const w = screenToWorld(sx, sy); if (!w) return false;
+    let best = null, bd = 50;
+    for (const nd of G.nodes) { if (nd.cd > 0) continue; const d = Math.hypot(nd.x - w.x, nd.y - w.y); if (d < bd) { bd = d; best = nd; } }
+    if (!best) return false;
+    if (Math.hypot(G.player.x - best.x, G.player.y - best.y) > 180) return false;
+    harvestNode(best); return true;
+  }
+  function updateNodes(dt) {
+    for (const nd of G.nodes) { if (nd.cd > 0) nd.cd -= dt; if (nd.shake > 0) nd.shake -= dt; }
   }
 
   // ---------- Shop ----------
@@ -837,6 +879,7 @@
     for (let i = G.pops.length - 1; i >= 0; i--) { const q = G.pops[i]; q.t -= dt; q.h += 26 * dt; if (q.t <= 0) G.pops.splice(i, 1); }
 
     updateDrops(dt);
+    updateNodes(dt);
     updateAllies(dt);
     updateStructures(dt);
     updatePanel();
@@ -918,6 +961,17 @@
     const nose = new THREE.Mesh(BOX_GEO, new THREE.MeshLambertMaterial({ color: 0x141018 }));
     nose.scale.set(0.5, 0.32, 0.95); nose.position.set(0, 1.05, 0.95); g.add(nose);
     g.userData.mat = mat; return g;
+  }
+  function makeTree() {
+    const g = new THREE.Group();
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(4, 5, 26, 7), new THREE.MeshLambertMaterial({ color: 0x6a4a28 }));
+    trunk.position.y = 13; g.add(trunk);
+    const fol = new THREE.Mesh(new THREE.ConeGeometry(20, 44, 9), new THREE.MeshLambertMaterial({ color: 0x2f7a3a }));
+    fol.position.y = 47; g.add(fol);
+    return g;
+  }
+  function makeRock() {
+    return new THREE.Mesh(new THREE.DodecahedronGeometry(1), new THREE.MeshLambertMaterial({ color: 0x8a8f96 }));
   }
   function clearGroup(g) {
     while (g.children.length) {
@@ -1018,6 +1072,16 @@
     G.placedWalls.forEach((w, i) => { const m = pw[i]; m.visible = true;
       m.position.set(w.x + w.w / 2, 24, w.y + w.h / 2); m.scale.set(w.w, 48, w.h);
       const f = w.hp / w.max; m.material.color.setRGB(0.48, 0.39 * (0.5 + f * 0.5), 0.21); });
+
+    // harvest nodes: trees & rocks
+    const treeNodes = G.nodes.filter(n => n.type === "tree");
+    const tnp = pool("tree", treeNodes.length, makeTree);
+    treeNodes.forEach((nd, i) => { const m = tnp[i]; m.visible = true; m.position.set(nd.x, 0, nd.y);
+      m.rotation.z = nd.shake > 0 ? Math.sin(nd.shake * 50) * 0.1 : 0; });
+    const rockNodes = G.nodes.filter(n => n.type === "rock");
+    const rnp = pool("rock", rockNodes.length, makeRock);
+    rockNodes.forEach((nd, i) => { const m = rnp[i]; m.visible = true;
+      m.position.set(nd.x, 10 + (nd.shake > 0 ? Math.abs(Math.sin(nd.shake * 55)) * 3 : 0), nd.y); m.scale.set(18, 13, 18); });
 
     renderer.render(scene, camera);
 
