@@ -320,6 +320,7 @@
     allies: [], mines: [], turrets: [], lavas: [], placedWalls: [], warmZones: [], drops: [],
     stations: [], panelKey: "", panelCtx: null,
     allyRegenT: 20, medicFrac: 0,
+    gunFiring: false,
   };
   function rand(a, b) { return a + Math.random() * (b - a); }
 
@@ -465,7 +466,7 @@
     s.querySelector(".stickKnob").style.left = kx + "px"; s.querySelector(".stickKnob").style.top = ky + "px";
   }
   function hideStick(id) { $(id).style.display = "none"; }
-  function clearSticks() { G.move.id = null; G.move.mag = 0; G.aim.id = null; G.aim.active = false; hideStick("moveStick"); hideStick("aimStick"); }
+  function clearSticks() { G.move.id = null; G.move.mag = 0; G.aim.id = null; G.aim.active = false; G.gunFiring = false; hideStick("moveStick"); hideStick("aimStick"); }
   const MAXR = 58;
   function aimAngle(dx, dy) { return Math.atan2(dy, dx); }
   cv.addEventListener("touchstart", (e) => {
@@ -510,7 +511,15 @@
 
   // weapon buttons + shop button
   $("btnKnife").addEventListener("click", () => meleeAttack());
-  $("btnGun").addEventListener("click", () => { if (G.player && G.player.gun) { G.player.weapon = "gun"; syncWeaponBtns(); } });
+  // gun button = hold to fire (auto-aim at nearest zombie)
+  function gunDown(e) { if (e) e.preventDefault(); if (G.player && G.player.gun) { ensureAudio(); G.player.weapon = "gun"; syncWeaponBtns(); G.gunFiring = true; } }
+  function gunUp() { G.gunFiring = false; }
+  const _bg = $("btnGun");
+  _bg.addEventListener("pointerdown", gunDown);
+  _bg.addEventListener("pointerup", gunUp);
+  _bg.addEventListener("pointerleave", gunUp);
+  _bg.addEventListener("pointercancel", gunUp);
+  window.addEventListener("pointerup", gunUp);
   $("shopHint").addEventListener("click", () => { if (G.state === "playing") openShop(); });
   function syncWeaponBtns() {
     if (!G.player) return;
@@ -612,11 +621,11 @@
     const g = GUN_BY_ID[p.gun]; if (!g || g.auto) return;
     shoot(g);
   }
-  function shoot(g) {
+  function shoot(g, angOverride) {
     const p = G.player;
     if (p.reloading > 0 || p.fireCd > 0) return;
     if (g.mag !== Infinity && p.ammo <= 0) { startReload(); return; }
-    const ang = getAimAngle(); p.ang = ang;
+    const ang = (angOverride !== undefined) ? angOverride : getAimAngle(); p.ang = ang;
     if (g.flame) spawnFlame(ang, g);
     else if (g.pellets) { for (let i = 0; i < g.pellets; i++) spawnBullet(ang + rand(-0.22, 0.22), g.dmg, g); }
     else spawnBullet(ang, g.dmg, g);
@@ -725,6 +734,13 @@
     if (G.aim.active) {
       if (p.weapon === "knife") swingKnife();
       else if (p.gun) shoot(GUN_BY_ID[p.gun]);
+    }
+    // gun fire button held: auto-aim nearest zombie (unless aim stick active)
+    if (G.gunFiring && p.weapon === "gun" && p.gun) {
+      let ang;
+      if (G.aim.active) ang = G.aim.ang;
+      else { const z = nearestZombie(p.x, p.y, 1400); ang = z ? Math.atan2(z.y - p.y, z.x - p.x) : p.ang; }
+      shoot(GUN_BY_ID[p.gun], ang);
     }
 
     if (p.fireCd > 0) p.fireCd -= dt;
@@ -852,6 +868,7 @@
     const pb = $("placeBtn");
     if (G.carried) { pb.style.display = "block"; pb.textContent = "📦 " + BUILD_BY_ID[G.carried].name + " 설치"; }
     else pb.style.display = "none";
+    $("btnGun").style.display = G.player.gun ? "flex" : "none";
     syncWeaponBtns();
   }
 
