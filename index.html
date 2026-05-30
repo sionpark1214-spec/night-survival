@@ -91,6 +91,12 @@
   #btnKnife { right: 90px; bottom: 96px; }
   #btnGun { right: 16px; bottom: 96px; }
 
+  /* lobby */
+  .mpInput { display: block; width: min(280px, 80vw); margin: 8px auto; padding: 12px 14px; font-size: 17px;
+    text-align: center; border-radius: 12px; border: 2px solid rgba(255,255,255,0.18);
+    background: rgba(255,255,255,0.06); color: #fff; outline: none; }
+  #lobby .btn { width: min(280px, 80vw); }
+
   /* resources row */
   #resRow { display: flex; gap: 10px; background: rgba(8,10,18,0.55);
     border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 6px 10px; font-size: 14px; font-weight: 700; }
@@ -135,6 +141,27 @@
 <body>
 <canvas id="game"></canvas>
 <canvas id="fx"></canvas>
+
+<script type="module">
+  // P2P networking (Trystero) — serverless, room-code based
+  try {
+    const { joinRoom, selfId } = await import('https://esm.sh/trystero');
+    window.NET = {
+      selfId, _send: null, room: null,
+      connect(code, onState, onLeave, onJoin) {
+        const room = joinRoom({ appId: 'sionpark1214-bam-survival-v1' }, code);
+        const [send, get] = room.makeAction('st');
+        this._send = send; this.room = room;
+        get((d, peer) => onState(peer, d));
+        room.onPeerJoin(p => onJoin && onJoin(p));
+        room.onPeerLeave(p => onLeave(p));
+      },
+      send(d) { if (this._send) { try { this._send(d); } catch (e) {} } },
+      leave() { try { this.room && this.room.leave(); } catch (e) {} this._send = null; this.room = null; }
+    };
+    window.dispatchEvent(new Event("net-ready"));
+  } catch (e) { window.NET_ERR = String(e); console.error("net load failed", e); }
+</script>
 
 <div id="hud" hidden>
   <div id="stats">
@@ -185,6 +212,26 @@
     좀비를 잡으면 돈이 들어온다 · 밤이 깊을수록 좀비는 강해진다
   </div>
   <button class="btn" id="startBtn">게임 시작</button>
+  <button class="btn" id="coopBtn" style="background:linear-gradient(180deg,#ffd76b,#f0a83c);margin-top:12px;">👥 친구와 하기</button>
+</div>
+
+<div class="overlay" id="lobby" hidden>
+  <h2 style="font-size:34px;">👥 친구와 하기</h2>
+  <input id="nameInput" class="mpInput" placeholder="내 이름 (선택)" maxlength="8" />
+  <div id="lobbyMain">
+    <button class="btn" id="createBtn">방 만들기</button>
+    <div style="margin:14px 0;color:#8090a4;">— 또는 —</div>
+    <input id="codeInput" class="mpInput" placeholder="방 코드 입력" maxlength="8" style="text-transform:uppercase;" />
+    <button class="btn" id="joinBtn" style="background:linear-gradient(180deg,#bfe0ff,#5fa0e6);">방 들어가기</button>
+  </div>
+  <div id="lobbyRoom" hidden>
+    <div style="color:#9fb0c8;">방 코드 (친구에게 공유)</div>
+    <div id="roomCode" style="font-size:40px;font-weight:900;letter-spacing:4px;color:#ffd76b;margin:6px 0;"></div>
+    <div id="roomStatus" style="color:#9fb0c8;margin:8px 0 4px;"></div>
+    <button class="btn" id="mpStartBtn">게임 시작</button>
+  </div>
+  <div id="lobbyMsg" style="color:#ff9aa8;font-size:13px;margin-top:12px;min-height:18px;"></div>
+  <button id="lobbyBack" style="margin-top:14px;padding:10px 28px;font-size:15px;font-weight:800;border:none;border-radius:12px;background:#2a3142;color:#dfe6f2;cursor:pointer;">← 뒤로</button>
 </div>
 
 <div class="overlay" id="dead" hidden>
@@ -223,7 +270,7 @@
   let SPHERE_GEO, BOX_GEO, DISC_GEO;
   let groundMathPlane;
   let fxCanvas, fxCtx, fxDPR = 1, _vproj;
-  const meshPools = { zombie: [], ally: [], bullet: [], drop: [], mine: [], lava: [], turret: [], pwall: [], warm: [], tree: [], rock: [] };
+  const meshPools = { zombie: [], ally: [], bullet: [], drop: [], mine: [], lava: [], turret: [], pwall: [], warm: [], tree: [], rock: [], remote: [] };
   const tapStarts = {};
 
   function resize() {
@@ -324,6 +371,8 @@
     allyRegenT: 20, medicFrac: 0,
     gunFiring: false,
     nodes: [],
+    mp: { on: false, isHost: false, code: null, name: null },
+    remotes: {},
   };
   function rand(a, b) { return a + Math.random() * (b - a); }
 
@@ -748,12 +797,24 @@
   }
 
   // ---------- Loop ----------
-  let last = 0;
+  let last = 0, lastNet = 0;
+  function netTick() {
+    if (!G.mp.on || !window.NET || !G.player) return;
+    const now = performance.now();
+    if (now - lastNet > 66) {
+      lastNet = now;
+      const p = G.player;
+      window.NET.send({ x: Math.round(p.x), y: Math.round(p.y), a: +p.ang.toFixed(2),
+        w: p.weapon, g: p.gun || "", hp: Math.round(p.hp), tp: Math.round(p.temp), n: G.mp.name, dead: G.state === "dead" ? 1 : 0 });
+    }
+    for (const id in G.remotes) if (now - G.remotes[id].t > 6000) delete G.remotes[id];
+  }
   function frame(ts) {
     if (!last) last = ts;
     let dt = (ts - last) / 1000; last = ts;
     if (dt > 0.05) dt = 0.05;
     if (G.state === "playing") update(dt);
+    netTick();
     render();
     requestAnimationFrame(frame);
   }
@@ -1086,6 +1147,13 @@
     rockNodes.forEach((nd, i) => { const m = rnp[i]; m.visible = true;
       m.position.set(nd.x, 10 + (nd.shake > 0 ? Math.abs(Math.sin(nd.shake * 55)) * 3 : 0), nd.y); m.scale.set(18, 13, 18); });
 
+    // remote players (multiplayer)
+    const rids = G.mp.on ? Object.keys(G.remotes) : [];
+    const remp = pool("remote", rids.length, () => makeChar(0x7ad1ff));
+    rids.forEach((id, i) => { const d = G.remotes[id], m = remp[i]; m.visible = true;
+      m.position.set(d.x, 0, d.y); m.scale.set(16, 16, 16); m.rotation.y = Math.PI / 2 - (d.ang || 0);
+      m.userData.mat.color.setHex(d.dead ? 0x555566 : 0x7ad1ff); });
+
     renderer.render(scene, camera);
 
     // floating text pops (damage / money / resources) projected to screen
@@ -1114,6 +1182,20 @@
         fxCtx.strokeStyle = "#ffffff"; fxCtx.lineWidth = 6; fxCtx.lineCap = "round";
         fxCtx.beginPath(); fxCtx.arc(sx, sy, 52, a - 0.55, a + 0.15); fxCtx.stroke();
         fxCtx.globalAlpha = 1;
+      }
+    }
+
+    // remote player name tags
+    if (fxCtx && G.mp.on) {
+      fxCtx.textAlign = "center"; fxCtx.font = "bold 13px sans-serif"; fxCtx.globalAlpha = 1;
+      for (const id in G.remotes) {
+        const d = G.remotes[id];
+        _vproj.set(d.x, 50, d.y); _vproj.project(camera);
+        if (_vproj.z > 1) continue;
+        const sx = (_vproj.x * 0.5 + 0.5) * W, sy = (-_vproj.y * 0.5 + 0.5) * H;
+        const nm = (d.name || "친구") + (d.dead ? " 💀" : "");
+        fxCtx.lineWidth = 3; fxCtx.strokeStyle = "rgba(0,0,0,0.6)"; fxCtx.strokeText(nm, sx, sy);
+        fxCtx.fillStyle = d.dead ? "#ff8a9a" : "#9fe8ff"; fxCtx.fillText(nm, sx, sy);
       }
     }
   }
@@ -1326,8 +1408,34 @@
   $("placeBtn").onclick = placeCarried;
 
 
+  // ---------- Multiplayer lobby ----------
+  function genCode() { const cs = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let s = ""; for (let i = 0; i < 4; i++) s += cs[Math.floor(Math.random() * cs.length)]; return s; }
+  function randName() { return "플레이어" + Math.floor(10 + Math.random() * 90); }
+  let mpPeers = {};
+  function updateRoomStatus() {
+    const n = Object.keys(mpPeers).length + 1;
+    $("roomStatus").textContent = "접속 인원: " + n + "명" + (G.mp.isHost ? " (방장)" : "");
+  }
+  function connectRoom(code, isHost) {
+    if (!window.NET) { $("lobbyMsg").textContent = window.NET_ERR ? "네트워크 로드 실패 (인터넷 확인)" : "네트워크 준비 중… 잠시 후 다시 눌러줘"; return; }
+    G.mp.name = (($("nameInput").value || "").trim()) || randName();
+    G.mp.on = true; G.mp.isHost = isHost; G.mp.code = code; G.remotes = {}; mpPeers = {};
+    try {
+      window.NET.connect(code,
+        (peer, d) => { mpPeers[peer] = true; G.remotes[peer] = { x: d.x, y: d.y, ang: d.a, weapon: d.w, gun: d.g, hp: d.hp, temp: d.tp, name: d.n, dead: d.dead, t: performance.now() }; },
+        (peer) => { delete mpPeers[peer]; delete G.remotes[peer]; updateRoomStatus(); },
+        (peer) => { mpPeers[peer] = true; updateRoomStatus(); });
+    } catch (e) { $("lobbyMsg").textContent = "연결 실패: " + e; return; }
+    $("lobbyMain").hidden = true; $("lobbyRoom").hidden = false; $("roomCode").textContent = code; updateRoomStatus();
+  }
+  $("coopBtn").onclick = () => { ensureAudio(); $("title").hidden = true; $("lobby").hidden = false; $("lobbyMain").hidden = false; $("lobbyRoom").hidden = true; $("lobbyMsg").textContent = ""; };
+  $("createBtn").onclick = () => connectRoom(genCode(), true);
+  $("joinBtn").onclick = () => { const c = (($("codeInput").value || "").trim().toUpperCase()); if (c.length < 3) { $("lobbyMsg").textContent = "방 코드를 입력해줘"; return; } connectRoom(c, false); };
+  $("mpStartBtn").onclick = () => { ensureAudio(); $("lobby").hidden = true; startGame(); };
+  $("lobbyBack").onclick = () => { if (window.NET) window.NET.leave(); G.mp.on = false; G.remotes = {}; $("lobby").hidden = true; $("title").hidden = false; };
+
   // ---------- Flow ----------
-  $("startBtn").onclick = () => { ensureAudio(); startGame(); };
+  $("startBtn").onclick = () => { ensureAudio(); G.mp.on = false; startGame(); };
   $("restartBtn").onclick = () => { G.state = "title"; $("dead").hidden = true; $("title").hidden = false; };
   init3D();
   requestAnimationFrame(frame);
