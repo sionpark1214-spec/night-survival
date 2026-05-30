@@ -151,6 +151,7 @@
   <div id="weaponBox">
     <div id="wName">🔪 칼</div>
     <div id="wAmmo">근접 무기</div>
+    <div id="torchInd" style="display:none;color:#ffb24a;font-size:12px;margin-top:3px;">🔥 횃불 켜짐 (온도 천천히 감소)</div>
   </div>
   <div id="shopHint">🛒 총 가게 — 상인을 눌러 구매</div>
 </div>
@@ -797,7 +798,7 @@
     const nearFire = Math.hypot(p.x - c.x, p.y - c.y) < c.r;
     let nearWarm = false;
     for (const wz of G.warmZones) if (Math.hypot(p.x - wz.x, p.y - wz.y) < wz.r) { nearWarm = true; break; }
-    if (G.torch > 0) { G.torch -= dt; if (Math.random() < 0.02 * dt) G.torch = 0; if (G.torch < 0) G.torch = 0; }
+    // torch: once held it stays lit (continuous effect, even while attacking)
     if (nearFire) { p.temp = Math.min(100, p.temp + CFG.regenTemp * dt); p.hp = Math.min(100, p.hp + CFG.regenHp * dt); }
     else if (nearWarm) { p.temp = Math.min(100, p.temp + CFG.regenTemp * dt); }
     else { p.temp -= (G.torch > 0 ? CFG.tempDrain * 0.3 : CFG.tempDrain) * dt; }
@@ -913,6 +914,7 @@
     if (G.carried) { pb.style.display = "block"; pb.textContent = "📦 " + BUILD_BY_ID[G.carried].name + " 설치"; }
     else pb.style.display = "none";
     $("btnGun").style.display = G.player.gun ? "flex" : "none";
+    $("torchInd").style.display = G.torch > 0 ? "block" : "none";
     syncWeaponBtns();
   }
 
@@ -1313,9 +1315,9 @@
     const rows = [["🪵 나무", G.res.wood], ["🪨 돌", G.res.stone], ["🔩 철", G.res.iron], ["🔫 터렛 탄약", G.ammoStock]];
     for (const [n, v] of rows) { const r = document.createElement("div"); r.className = "invrow"; r.innerHTML = `<span>${n}</span><b>${v}</b>`; list.appendChild(r); }
     const tr = document.createElement("div"); tr.className = "invrow";
-    tr.innerHTML = `<span>🔥 횃불 ×${G.inv.torch}${G.torch > 0 ? " (사용중 " + Math.ceil(G.torch) + "s)" : ""}</span>`;
-    const tb = document.createElement("button"); tb.textContent = "들기"; tb.disabled = !(G.inv.torch > 0 && G.torch <= 0);
-    tb.onclick = () => { if (G.inv.torch > 0 && G.torch <= 0) { G.inv.torch--; G.torch = 30; buildInv(); } };
+    tr.innerHTML = `<span>🔥 횃불 ×${G.inv.torch}${G.torch > 0 ? " (켜짐 · 계속 유지)" : ""}</span>`;
+    const tb = document.createElement("button"); tb.textContent = G.torch > 0 ? "켜짐" : "들기"; tb.disabled = !(G.inv.torch > 0 && G.torch <= 0);
+    tb.onclick = () => { if (G.inv.torch > 0 && G.torch <= 0) { G.inv.torch--; G.torch = 1; buildInv(); } };
     tr.appendChild(tb); list.appendChild(tr);
   }
   function closeInv() { if (G.state === "inventory") { G.state = "playing"; $("inv").hidden = true; } }
