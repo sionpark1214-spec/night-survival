@@ -10,6 +10,7 @@
     font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Malgun Gothic", sans-serif;
     color: #eee; cursor: crosshair; }
   #game { display: block; position: fixed; inset: 0; }
+  #fx { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
 
   /* HUD */
   #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
@@ -133,6 +134,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
+<canvas id="fx"></canvas>
 
 <div id="hud" hidden>
   <div id="stats">
@@ -218,13 +220,15 @@
   let ambLight, sunLight, playerLight, fireLight;
   let dynGroup, envGroup, playerMesh, campMesh;
   let SPHERE_GEO, BOX_GEO, DISC_GEO;
-  const GROUND_PLANE = null; // set in init3D
   let groundMathPlane;
+  let fxCanvas, fxCtx, fxDPR = 1, _vproj;
   const meshPools = { zombie: [], ally: [], bullet: [], drop: [], mine: [], lava: [], turret: [], pwall: [], warm: [] };
 
   function resize() {
     W = window.innerWidth; H = window.innerHeight;
     if (renderer) { renderer.setSize(W, H); camera.aspect = W / H; camera.updateProjectionMatrix(); }
+    if (fxCtx) { fxDPR = Math.min(window.devicePixelRatio || 1, 2);
+      fxCanvas.width = W * fxDPR; fxCanvas.height = H * fxDPR; fxCanvas.style.width = W + "px"; fxCanvas.style.height = H + "px"; }
   }
   window.addEventListener("resize", resize);
 
@@ -814,6 +818,7 @@
 
   // ================= RENDER (3D / Three.js) =================
   function init3D() {
+    fxCanvas = $("fx"); fxCtx = fxCanvas.getContext("2d"); _vproj = new THREE.Vector3();
     renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     scene = new THREE.Scene();
@@ -839,13 +844,24 @@
 
     envGroup = new THREE.Group(); scene.add(envGroup);
     dynGroup = new THREE.Group(); scene.add(dynGroup);
-    playerMesh = makeBall(0xffd98a); playerMesh.visible = false; scene.add(playerMesh);
+    playerMesh = makeChar(0xffd98a); playerMesh.visible = false; scene.add(playerMesh);
     resize();
   }
 
   function makeBall(color) {
     const mat = new THREE.MeshLambertMaterial({ color });
     const m = new THREE.Mesh(SPHERE_GEO, mat); m.userData.mat = mat; return m;
+  }
+  // character = body + head + facing nose (unit-sized; scale by radius)
+  function makeChar(color) {
+    const g = new THREE.Group();
+    const mat = new THREE.MeshLambertMaterial({ color });
+    const body = new THREE.Mesh(SPHERE_GEO, mat); body.scale.set(1, 1.1, 1); body.position.y = 1; g.add(body);
+    const head = new THREE.Mesh(SPHERE_GEO, new THREE.MeshLambertMaterial({ color: 0x241a28 }));
+    head.scale.set(0.55, 0.55, 0.55); head.position.y = 2.05; g.add(head);
+    const nose = new THREE.Mesh(BOX_GEO, new THREE.MeshLambertMaterial({ color: 0x141018 }));
+    nose.scale.set(0.5, 0.32, 0.95); nose.position.set(0, 1.05, 0.95); g.add(nose);
+    g.userData.mat = mat; return g;
   }
   function clearGroup(g) {
     while (g.children.length) {
@@ -887,6 +903,7 @@
 
   function render() {
     if (!renderer) return;
+    if (fxCtx) { fxCtx.setTransform(fxDPR, 0, 0, fxDPR, 0, 0); fxCtx.clearRect(0, 0, W, H); }
     const isNight = G.phase === "night";
     if (isNight) {
       ambLight.intensity = 0.16; sunLight.intensity = 0.08;
@@ -900,20 +917,21 @@
     if (!G.player) { renderer.render(scene, camera); return; }
     const p = G.player;
     playerMesh.visible = true;
-    playerMesh.position.set(p.x, p.r, p.y); playerMesh.scale.set(p.r, p.r * 1.1, p.r);
+    playerMesh.position.set(p.x, 0, p.y); playerMesh.scale.set(p.r, p.r, p.r); playerMesh.rotation.y = Math.PI / 2 - p.ang;
     playerMesh.userData.mat.color.setHex(p.hurtFlash > 0 ? 0xffb0b0 : 0xffd98a);
     playerLight.position.set(p.x, 90, p.y);
     camera.position.set(p.x, 560, p.y + 430); camera.lookAt(p.x, 0, p.y);
     if (campMesh) campMesh.scale.set(1, 1 + Math.sin(performance.now() / 110) * 0.18, 1);
 
-    const zp = pool("zombie", G.zombies.length, () => makeBall(0xffffff));
+    const zp = pool("zombie", G.zombies.length, () => makeChar(0xffffff));
     G.zombies.forEach((z, i) => { const m = zp[i], def = ZT[z.type]; m.visible = true;
-      m.position.set(z.x, z.r, z.y); m.scale.set(z.r, z.r * 1.1, z.r);
+      m.position.set(z.x, 0, z.y); m.scale.set(z.r, z.r, z.r); m.rotation.y = Math.PI / 2 - z.face;
       m.userData.mat.color.setHex(z.hitFlash > 0 ? 0xffffff : colHex(def.color)); });
 
-    const ap = pool("ally", G.allies.length, () => makeBall(0xffffff));
+    const ap = pool("ally", G.allies.length, () => makeChar(0xffffff));
     G.allies.forEach((a, i) => { const m = ap[i]; m.visible = true;
-      m.position.set(a.x, a.r, a.y); m.scale.set(a.r, a.r * 1.2, a.r); m.userData.mat.color.setHex(colHex(a.color)); });
+      m.position.set(a.x, 0, a.y); m.scale.set(a.r, a.r, a.r); m.rotation.y = Math.PI / 2 - a.face;
+      m.userData.mat.color.setHex(colHex(a.color)); });
 
     const bp = pool("bullet", G.bullets.length, () => makeBall(0xffe27a));
     G.bullets.forEach((b, i) => { const m = bp[i]; m.visible = true;
@@ -944,6 +962,20 @@
       const f = w.hp / w.max; m.material.color.setRGB(0.48, 0.39 * (0.5 + f * 0.5), 0.21); });
 
     renderer.render(scene, camera);
+
+    // floating text pops (damage / money / resources) projected to screen
+    if (fxCtx && G.pops.length) {
+      fxCtx.textAlign = "center"; fxCtx.font = "bold 16px sans-serif";
+      for (const q of G.pops) {
+        _vproj.set(q.x, (q.h || 14) + 18, q.y); _vproj.project(camera);
+        if (_vproj.z > 1) continue;
+        const sx = (_vproj.x * 0.5 + 0.5) * W, sy = (-_vproj.y * 0.5 + 0.5) * H;
+        fxCtx.globalAlpha = Math.max(0, Math.min(1, q.t));
+        fxCtx.lineWidth = 3; fxCtx.strokeStyle = "rgba(0,0,0,0.6)"; fxCtx.strokeText(q.txt, sx, sy);
+        fxCtx.fillStyle = q.col; fxCtx.fillText(q.txt, sx, sy);
+      }
+      fxCtx.globalAlpha = 1;
+    }
   }
 
   // ================= NEW SYSTEMS =================
