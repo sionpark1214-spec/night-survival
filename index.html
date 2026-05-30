@@ -1150,8 +1150,9 @@
       if (a.cd > 0) a.cd -= dt;
       if (a.hurtCd > 0) a.hurtCd -= dt;
       if (a.kind === "medic") {
-        G.medicFrac += dt;
-        while (G.medicFrac >= 1) { G.medicFrac -= 1; p.hp = Math.min(100, p.hp + 1); for (const b of G.allies) b.hp = Math.min(b.max, b.hp + 1); }
+        // 회복 1초당 0.5 (부활 작업 중이면 회복 안 함 — 멀티 부활 단계에서 처리)
+        p.hp = Math.min(100, p.hp + 0.5 * dt);
+        for (const b of G.allies) b.hp = Math.min(b.max, b.hp + 0.5 * dt);
       }
       const z = (a.kind === "melee" || a.kind === "gun") ? nearestZombie(a.x, a.y, 320) : null;
       if (z) {
