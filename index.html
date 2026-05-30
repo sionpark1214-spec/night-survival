@@ -412,8 +412,8 @@
     generateMap();
     build3DWorld();
     G.nodes = [];
-    for (let i = 0; i < 12; i++) G.nodes.push(makeNode("tree"));
-    for (let i = 0; i < 9; i++) G.nodes.push(makeNode("rock"));
+    for (let i = 0; i < 20; i++) G.nodes.push(makeNode("tree"));
+    for (let i = 0; i < 20; i++) G.nodes.push(makeNode("rock"));
     const c = G.campfire;
     G.player = { x: c.x, y: c.y + 30, r: CFG.playerR, ang: 0, hp: 100, temp: 100,
       weapon: "knife", gun: null, ammo: 0, reloading: 0, fireCd: 0, knifeCd: 0, swing: 0, hurtFlash: 0 };
@@ -555,7 +555,7 @@
   function makeNode(type) {
     let x, y, tries = 0;
     do { x = rand(-1600, 1600); y = rand(-1600, 1600); tries++; } while (insideAnyHouse(x, y, 70) && tries < 40);
-    return { type, x, y, hp: 8, cd: 0, shake: 0 };
+    return { type, x, y, hp: 3, cd: 0, shake: 0 };
   }
   function harvestNode(nd) {
     nd.cd = 0.4; nd.shake = 0.3;
@@ -679,7 +679,7 @@
     const p = G.player;
     G.bullets.push({ x: p.x + Math.cos(ang) * 22, y: p.y + Math.sin(ang) * 22,
       vx: Math.cos(ang) * CFG.bulletSpeed, vy: Math.sin(ang) * CFG.bulletSpeed,
-      dmg, life: 1.1, pierce: !!g.pierce, hit: g.pierce ? [] : null, big: g.id === "sniper" || g.id === "minigun" });
+      dmg, life: 1.1, pierce: !!g.pierce, hit: g.pierce ? [] : null, big: g.id === "sniper" || g.id === "minigun", fromPlayer: true });
   }
   function spawnFlame(ang, g) {
     const p = G.player;
@@ -719,10 +719,11 @@
     z.hp -= dmg; z.hitFlash = 0.08;
     G.pops.push({ x: z.x, y: z.y, h: z.r + 16, t: 0.6, txt: Math.round(dmg), col: "#fff" });
   }
-  function killZombie(z, idx) {
+  function killZombie(z, idx, mult) {
     const def = ZT[z.type];
-    G.money += def.reward; G.killCount++;
-    if (def.reward > 0) G.pops.push({ x: z.x, y: z.y, h: 18, t: 0.9, txt: "+" + def.reward + "원", col: "#ffd76b" });
+    const amt = Math.round(def.reward * (mult || 1));
+    G.money += amt; G.killCount++;
+    if (amt > 0) G.pops.push({ x: z.x, y: z.y, h: 18, t: 0.9, txt: "+" + amt + "원", col: "#ffd76b" });
     if (Math.random() < 0.15) { const types = ["wood", "stone", "iron"]; const ty = types[(Math.random() * 3) | 0];
       G.drops.push({ x: z.x, y: z.y, type: ty, bob: Math.random() * 6.3 }); }
     for (let i = 0; i < 12; i++) { const a = Math.random() * 6.3, s = rand(40, 160);
@@ -864,7 +865,7 @@
         if (Math.hypot(b.x - z.x, b.y - z.y) < z.r + 4) {
           if (b.pierce) { if (b.hit.indexOf(z) >= 0) continue; b.hit.push(z); }
           damageZombie(z, b.dmg);
-          if (z.hp <= 0) killZombie(z, j);
+          if (z.hp <= 0) killZombie(z, j, b.fromPlayer ? 1.5 : 1);
           if (!b.pierce) { dead = true; break; }
         }
       }
