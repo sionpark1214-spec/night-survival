@@ -672,7 +672,7 @@
     const def = ZT[z.type];
     G.money += def.reward; G.killCount++;
     if (def.reward > 0) G.pops.push({ x: z.x, y: z.y, h: 18, t: 0.9, txt: "+" + def.reward + "원", col: "#ffd76b" });
-    if (Math.random() < 0.05) { const types = ["wood", "stone", "iron"]; const ty = types[(Math.random() * 3) | 0];
+    if (Math.random() < 0.15) { const types = ["wood", "stone", "iron"]; const ty = types[(Math.random() * 3) | 0];
       G.drops.push({ x: z.x, y: z.y, type: ty, bob: Math.random() * 6.3 }); }
     for (let i = 0; i < 12; i++) { const a = Math.random() * 6.3, s = rand(40, 160);
       G.parts.push({ x: z.x, y: z.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.3, 0.6), max: 0.6, r: rand(2, 4), col: def.color, h: 14 }); }
