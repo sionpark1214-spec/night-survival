@@ -399,7 +399,7 @@
   // ---------- Start / die ----------
   function startGame() {
     G.state = "playing";
-    G.day = 1; G.phase = "day"; G.timer = CFG.dayBase; G.money = 100;
+    G.day = 1; G.phase = "day"; G.timer = CFG.dayBase; G.money = 500;
     G.zombies = []; G.bullets = []; G.parts = []; G.pops = []; G.pools = [];
     G.spawnQueue = []; G.spawnTimer = 0; G.killCount = 0; G._hoverPrev = false;
     G.res = { wood: 0, stone: 0, iron: 0 }; G.ammoStock = 0; G.carried = null; G.inv = { torch: 0 }; G.torch = 0;
@@ -508,7 +508,7 @@
   cv.addEventListener("touchcancel", endTouch);
 
   // weapon buttons + shop button
-  $("btnKnife").addEventListener("click", () => { if (G.player) { G.player.weapon = "knife"; syncWeaponBtns(); } });
+  $("btnKnife").addEventListener("click", () => meleeAttack());
   $("btnGun").addEventListener("click", () => { if (G.player && G.player.gun) { G.player.weapon = "gun"; syncWeaponBtns(); } });
   $("shopHint").addEventListener("click", () => { if (G.state === "playing") openShop(); });
   function syncWeaponBtns() {
@@ -568,6 +568,37 @@
     const mw = mouseWorld();
     return Math.atan2(mw.y - p.y, mw.x - p.x);
   }
+  // ----- swish sound (synth, no file) -----
+  let audioCtx;
+  function playSwish() {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+      const A = audioCtx, now = A.currentTime, dur = 0.16;
+      const buf = A.createBuffer(1, Math.floor(A.sampleRate * dur), A.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+      const src = A.createBufferSource(); src.buffer = buf;
+      const bp = A.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 0.7;
+      bp.frequency.setValueAtTime(800, now); bp.frequency.exponentialRampToValueAtTime(4200, now + dur);
+      const gain = A.createGain();
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.5, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+      src.connect(bp); bp.connect(gain); gain.connect(A.destination);
+      src.start(now); src.stop(now + dur);
+    } catch (e) {}
+  }
+  // ----- knife button: swing & attack toward nearest zombie -----
+  function meleeAttack() {
+    if (!G.player || G.state !== "playing") return;
+    G.player.weapon = "knife"; syncWeaponBtns();
+    if (G.player.knifeCd > 0) return;
+    let ang = G.player.ang;
+    const z = nearestZombie(G.player.x, G.player.y, CFG.knifeRange + 70);
+    if (z) ang = Math.atan2(z.y - G.player.y, z.x - G.player.x);
+    swingKnife(ang);
+  }
   function fireOnce() {
     const p = G.player;
     if (p.weapon === "knife") { swingKnife(); return; }
@@ -608,11 +639,12 @@
         life: rand(0.2, 0.4), max: 0.4, r: rand(5, 11), col: Math.random() < 0.5 ? "#ff8a2a" : "#ffd24a", h: 18 });
     }
   }
-  function swingKnife() {
+  function swingKnife(angOverride) {
     const p = G.player;
     if (p.knifeCd > 0) return;
     p.knifeCd = CFG.knifeDelay;
-    const ang = getAimAngle(); p.ang = ang; p.swing = 0.18;
+    playSwish();
+    const ang = (angOverride !== undefined) ? angOverride : getAimAngle(); p.ang = ang; p.swing = 0.18;
     for (const z of G.zombies) {
       const dx = z.x - p.x, dy = z.y - p.y, d = Math.hypot(dx, dy);
       if (d < CFG.knifeRange + z.r) {
