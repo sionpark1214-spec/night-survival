@@ -938,12 +938,14 @@
     if (fxCtx) { fxCtx.setTransform(fxDPR, 0, 0, fxDPR, 0, 0); fxCtx.clearRect(0, 0, W, H); }
     const isNight = G.phase === "night";
     if (isNight) {
-      ambLight.intensity = 0.16; sunLight.intensity = 0.08;
-      scene.background.setHex(0x05070e); scene.fog.color.setHex(0x05070e); scene.fog.near = 180; scene.fog.far = 850;
+      // 밤: 남색
+      ambLight.intensity = 0.22; sunLight.intensity = 0.1;
+      scene.background.setHex(0x141452); scene.fog.color.setHex(0x141452); scene.fog.near = 200; scene.fog.far = 950;
       playerLight.intensity = 1.4; fireLight.intensity = 2.2;
     } else {
-      ambLight.intensity = 0.85; sunLight.intensity = 0.8;
-      scene.background.setHex(0x202b40); scene.fog.color.setHex(0x202b40); scene.fog.near = 700; scene.fog.far = 2700;
+      // 낮: 노랑+주황 합쳐진 배경
+      ambLight.intensity = 0.9; sunLight.intensity = 0.85;
+      scene.background.setHex(0xffb24a); scene.fog.color.setHex(0xffb24a); scene.fog.near = 800; scene.fog.far = 3000;
       playerLight.intensity = 0.0; fireLight.intensity = 0.7;
     }
     if (!G.player) { renderer.render(scene, camera); return; }
