@@ -89,6 +89,46 @@
   .wbtn.active { border-color: #ffd76b; background: rgba(60,46,12,0.8); }
   #btnKnife { right: 90px; bottom: 96px; }
   #btnGun { right: 16px; bottom: 96px; }
+
+  /* resources row */
+  #resRow { display: flex; gap: 10px; background: rgba(8,10,18,0.55);
+    border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 6px 10px; font-size: 14px; font-weight: 700; }
+  #resRow span { white-space: nowrap; }
+
+  /* station / context panel (bottom, non-pausing) */
+  #panel { position: fixed; left: 50%; transform: translateX(-50%); bottom: 92px; z-index: 7;
+    display: none; gap: 8px; max-width: 96vw; overflow-x: auto; padding: 8px; pointer-events: auto;
+    background: rgba(10,13,22,0.82); border: 1px solid rgba(255,255,255,0.14); border-radius: 14px; }
+  #panel.show { display: flex; }
+  #panelTitle { position: fixed; left: 50%; transform: translateX(-50%); bottom: 160px; z-index: 7;
+    font-size: 13px; font-weight: 800; color: #ffd98a; background: rgba(10,13,22,0.7); padding: 3px 12px;
+    border-radius: 8px; display: none; }
+  #panelTitle.show { display: block; }
+  .sitem { flex: 0 0 auto; min-width: 96px; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.05); color: #fff; cursor: pointer; text-align: center; }
+  .sitem b { display: block; font-size: 14px; }
+  .sitem small { display: block; font-size: 11px; color: #9fb0c8; margin-top: 2px; }
+  .sitem .cost { font-size: 11px; color: #ffd76b; margin-top: 2px; }
+  .sitem:disabled, .sitem.dis { opacity: 0.45; cursor: not-allowed; }
+  .sitem.own { border-color: #5fd08a; }
+
+  /* big action buttons */
+  .actbtn { pointer-events: auto; position: absolute; padding: 12px 18px; border-radius: 14px; border: none;
+    font-size: 16px; font-weight: 800; cursor: pointer; }
+  #placeBtn { bottom: 170px; left: 50%; transform: translateX(-50%); background: linear-gradient(180deg,#9ff0a8,#43c463); color: #05210e; display: none; }
+  #invBtn { top: 14px; right: 14px; width: 54px; height: 54px; padding: 0; font-size: 26px;
+    background: rgba(12,16,26,0.75); color: #fff; border: 2px solid rgba(255,255,255,0.18); border-radius: 14px; }
+
+  /* inventory overlay */
+  #inv { z-index: 26; }
+  #invPanel { background: linear-gradient(180deg,#161c2a,#0e1320); border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 18px; padding: 22px 24px; width: min(460px, 92vw); }
+  #invPanel h2 { font-size: 22px; margin-bottom: 14px; }
+  .invrow { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px;
+    background: rgba(255,255,255,0.04); border-radius: 10px; margin-bottom: 8px; font-size: 15px; }
+  .invrow button { padding: 8px 16px; border: none; border-radius: 9px; font-weight: 800; cursor: pointer;
+    background: linear-gradient(180deg,#ffd76b,#f0b22e); color: #2a1c00; }
+  .invrow button:disabled { background: #333a48; color: #6a7488; cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -99,6 +139,7 @@
     <div class="statrow"><span class="ico">🌡️</span><div class="bar"><i id="tempFill"></i></div><span class="statval" id="tempVal">100%</span></div>
     <div class="statrow"><span class="ico">❤️</span><div class="bar"><i id="hpFill"></i></div><span class="statval" id="hpVal">100</span></div>
     <div class="statrow"><span class="ico">💰</span><span id="money">100원</span></div>
+    <div id="resRow"><span>🪵 <i id="rWood">0</i></span><span>🪨 <i id="rStone">0</i></span><span>🔩 <i id="rIron">0</i></span></div>
   </div>
   <div id="topbar">
     <div id="dayText">1일차</div>
@@ -117,6 +158,18 @@
   <div class="stick" id="aimStick"><div class="stickBase"></div><div class="stickKnob"></div></div>
   <div class="wbtn active" id="btnKnife">🔪</div>
   <div class="wbtn" id="btnGun">🔫</div>
+  <button class="actbtn" id="invBtn">🎒</button>
+  <button class="actbtn" id="placeBtn">📦 설치</button>
+</div>
+<div id="panelTitle"></div>
+<div id="panel"></div>
+
+<div class="overlay" id="inv" hidden>
+  <div id="invPanel">
+    <h2>🎒 인벤토리</h2>
+    <div id="invList"></div>
+    <button id="invClose" style="margin-top:10px;width:100%;padding:12px;font-size:16px;font-weight:800;border:none;border-radius:12px;background:#2a3142;color:#dfe6f2;cursor:pointer;">닫기</button>
+  </div>
 </div>
 
 <div class="overlay" id="title">
@@ -210,6 +263,26 @@
     return `데미지 ${g.dmg} · ${g.auto?"연사":"클릭"} ${g.delay}s · ${mag}발${rl}${extra}`;
   }
 
+  // ---------- Buildables / Hires ----------
+  const TURRET_AMMO = { price: 400, amount: 200 };
+  const BUILDS = [
+    { id:"mine",   name:"지뢰",     iron:3, wood:0, stone:2, place:true,  desc:"밟으면 100뎀" },
+    { id:"turret", name:"터렛",     iron:5, wood:0, stone:2, place:true,  desc:"자동사격 (탄약 필요)" },
+    { id:"lava",   name:"용암함정", iron:1, wood:0, stone:5, place:true,  desc:"30+화상50, 1회용" },
+    { id:"wall",   name:"벽",       iron:0, wood:5, stone:0, place:true,  desc:"체력 500" },
+    { id:"torch",  name:"횃불",     iron:0, wood:3, stone:3, place:false, desc:"온도 천천히 감소" },
+  ];
+  const BUILD_BY_ID = {}; BUILDS.forEach(b => BUILD_BY_ID[b.id] = b);
+  const HIRES = [
+    { id:"knifeman", name:"칼든사람", price:100,  hp:20, kind:"melee", dmg:5, cd:2.0, color:"#c0c8d0" },
+    { id:"police",   name:"경찰",     price:500,  hp:30, kind:"gun", gun:"pistol", color:"#3b6ea5" },
+    { id:"sniper",   name:"저격수",   price:1100, hp:60, kind:"gun", gun:"sniper", color:"#2f6d3a" },
+    { id:"medic",    name:"의무병",   price:1500, hp:50, kind:"medic", color:"#d05a7a" },
+    { id:"miner",    name:"광부",     price:2000, hp:5,  kind:"miner", color:"#8a6a30" },
+  ];
+  const HIRE_BY_ID = {}; HIRES.forEach(h => HIRE_BY_ID[h.id] = h);
+  const RES_COL = { wood:"#9a6a38", stone:"#8a8a8a", iron:"#b3bcc6" };
+
   // ---------- Zombie types ----------
   const ZT = {
     normal:  { name:"좀비",     hp:10,  spd:78,  dmgHp:1,  reward:5,   color:"#5a7a4a", r:15, since:1 },
@@ -246,6 +319,15 @@
     move: { id: null, dx: 0, dy: 0, mag: 0 },
     aim: { id: null, active: false, ang: 0 },
     killCount: 0, _hoverPrev: false,
+    // new systems
+    res: { wood: 0, stone: 0, iron: 0 },
+    ammoStock: 0,            // turret ammo in inventory
+    carried: null,           // build id being carried (to place)
+    inv: { torch: 0 },
+    torch: 0,                // remaining torch fuel (>0 = active)
+    allies: [], mines: [], turrets: [], lavas: [], placedWalls: [], warmZones: [], drops: [],
+    stations: [], panelKey: "", panelCtx: null,
+    allyRegenT: 20, medicFrac: 0,
   };
   function rand(a, b) { return a + Math.random() * (b - a); }
 
@@ -282,18 +364,27 @@
 
   function generateMap() {
     G.houses = []; G.walls = [];
-    // only two houses: spawn(campfire) house + gun shop
-    const ch = makeHouse(-160, -150, 300, 270, "right", { hasCampfire: true });
-    const sh = makeHouse(560, -140, 300, 250, "left", { hasSeller: true });
-    G.houses.push(ch, sh);
-    G.campfire = { x: ch.x + ch.w / 2, y: ch.y + ch.h / 2, r: CFG.campRadius };
-    G.seller = { x: sh.x + sh.w / 2, y: sh.y + sh.h / 2 - 10 };
+    // spawn(campfire+bench) house, gun shop, hire shop
+    const ch = makeHouse(-170, -160, 320, 290, "right", { hasCampfire: true });
+    const gh = makeHouse(560, -150, 300, 250, "left", { hasSeller: true });
+    const hh = makeHouse(-150, 420, 300, 250, "top", { hasHire: true });
+    G.houses.push(ch, gh, hh);
+    G.campfire = { x: ch.x + ch.w / 2 - 40, y: ch.y + ch.h / 2, r: CFG.campRadius };
+    G.bench = { x: ch.x + ch.w / 2 + 70, y: ch.y + ch.h / 2 };
+    G.seller = { x: gh.x + gh.w / 2, y: gh.y + gh.h / 2 - 10 };
+    G.hireNpc = { x: hh.x + hh.w / 2, y: hh.y + hh.h / 2 - 10 };
+    G.stations = [
+      { type: "gun",   x: G.seller.x,  y: G.seller.y,  range: 150 },
+      { type: "hire",  x: G.hireNpc.x, y: G.hireNpc.y, range: 150 },
+      { type: "bench", x: G.bench.x,   y: G.bench.y,   range: 120 },
+    ];
     for (const ho of G.houses) for (const wl of ho.walls) G.walls.push(wl);
   }
 
   // ---------- Collision ----------
   function resolve(o, r) {
-    for (const wl of G.walls) {
+    const lists = [G.walls, G.placedWalls];
+    for (const list of lists) for (const wl of list) {
       const nx = Math.max(wl.x, Math.min(o.x, wl.x + wl.w));
       const ny = Math.max(wl.y, Math.min(o.y, wl.y + wl.h));
       let dx = o.x - nx, dy = o.y - ny;
@@ -319,6 +410,10 @@
     G.day = 1; G.phase = "day"; G.timer = CFG.dayBase; G.money = 100;
     G.zombies = []; G.bullets = []; G.parts = []; G.pops = []; G.pools = [];
     G.spawnQueue = []; G.spawnTimer = 0; G.killCount = 0; G._hoverPrev = false;
+    G.res = { wood: 0, stone: 0, iron: 0 }; G.ammoStock = 0; G.carried = null; G.inv = { torch: 0 }; G.torch = 0;
+    G.allies = []; G.mines = []; G.turrets = []; G.lavas = []; G.placedWalls = []; G.warmZones = []; G.drops = [];
+    G.panelKey = ""; G.panelCtx = null; G.allyRegenT = 20; G.medicFrac = 0;
+    $("panel").className = ""; $("panelTitle").className = ""; $("placeBtn").style.display = "none"; $("inv").hidden = true;
     generateMap();
     const c = G.campfire;
     G.player = { x: c.x, y: c.y + 30, r: CFG.playerR, ang: 0, hp: 100, temp: 100,
@@ -328,6 +423,7 @@
   }
   function die(reason) {
     G.state = "dead"; clearSticks();
+    $("panel").className = ""; $("panelTitle").className = ""; $("placeBtn").style.display = "none"; $("inv").hidden = true;
     $("hud").hidden = true; $("shop").hidden = true; $("touch").hidden = true;
     $("deadMsg").textContent = reason;
     $("deadStats").textContent = `${G.day}일차까지 생존 · 좀비 ${G.killCount}마리 처치`;
@@ -458,7 +554,6 @@
     G.money -= g.price; G.player.gun = id; G.player.weapon = "gun";
     G.player.ammo = g.mag === Infinity ? Infinity : g.mag;
     G.player.reloading = 0; G.player.fireCd = 0;
-    openShop();
   }
   function closeShop() { if (G.state === "shopping") { G.state = "playing"; $("shop").hidden = true; } }
   $("shopClose").onclick = closeShop;
@@ -540,6 +635,8 @@
     const def = ZT[z.type];
     G.money += def.reward; G.killCount++;
     if (def.reward > 0) G.pops.push({ x: z.x, y: z.y, h: 18, t: 0.9, txt: "+" + def.reward + "원", col: "#ffd76b" });
+    if (Math.random() < 0.05) { const types = ["wood", "stone", "iron"]; const ty = types[(Math.random() * 3) | 0];
+      G.drops.push({ x: z.x, y: z.y, type: ty, bob: Math.random() * 6.3 }); }
     for (let i = 0; i < 12; i++) { const a = Math.random() * 6.3, s = rand(40, 160);
       G.parts.push({ x: z.x, y: z.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.3, 0.6), max: 0.6, r: rand(2, 4), col: def.color, h: 14 }); }
     if (def.explode) explode(z.x, z.y, 90, 10);
@@ -603,8 +700,12 @@
 
     const c = G.campfire;
     const nearFire = Math.hypot(p.x - c.x, p.y - c.y) < c.r;
+    let nearWarm = false;
+    for (const wz of G.warmZones) if (Math.hypot(p.x - wz.x, p.y - wz.y) < wz.r) { nearWarm = true; break; }
+    if (G.torch > 0) { G.torch -= dt; if (Math.random() < 0.02 * dt) G.torch = 0; if (G.torch < 0) G.torch = 0; }
     if (nearFire) { p.temp = Math.min(100, p.temp + CFG.regenTemp * dt); p.hp = Math.min(100, p.hp + CFG.regenHp * dt); }
-    else p.temp -= CFG.tempDrain * dt;
+    else if (nearWarm) { p.temp = Math.min(100, p.temp + CFG.regenTemp * dt); }
+    else { p.temp -= (G.torch > 0 ? CFG.tempDrain * 0.3 : CFG.tempDrain) * dt; }
     if (p.temp <= 0) { p.temp = 0; return die("온도가 0이 되어 얼어붙었다…"); }
 
     G.timer -= dt;
@@ -612,7 +713,16 @@
     else if (G.phase === "night" && G.timer <= 0) { G.phase = "morning"; G.fleeT = 2.2; for (const z of G.zombies) z.flee = true; }
     if (G.phase === "morning") {
       G.fleeT -= dt;
-      if (G.fleeT <= 0) { G.zombies = []; G.day++; G.phase = "day"; G.timer = CFG.dayBase + (G.day - 1) * CFG.dayInc; }
+      if (G.fleeT <= 0) {
+        G.zombies = [];
+        // miners deliver resources, sometimes die
+        for (let i = G.allies.length - 1; i >= 0; i--) { const a = G.allies[i];
+          if (a.kind === "miner") {
+            if (Math.random() < 0.2) { G.pops.push({ x: a.x, y: a.y, h: 20, t: 1.2, txt: "광부 사망", col: "#ff6b8a" }); G.allies.splice(i, 1); }
+            else { G.res.stone += 5; G.res.iron += 5; }
+          } }
+        G.day++; G.phase = "day"; G.timer = CFG.dayBase + (G.day - 1) * CFG.dayInc;
+      }
     }
 
     if (G.phase === "night" && G.spawnQueue.length) {
@@ -674,7 +784,11 @@
     }
     for (let i = G.pops.length - 1; i >= 0; i--) { const q = G.pops[i]; q.t -= dt; q.h += 26 * dt; if (q.t <= 0) G.pops.splice(i, 1); }
 
-    checkShopHover();
+    updateDrops(dt);
+    updateAllies(dt);
+    updateStructures(dt);
+    updatePanel();
+    refreshPanelAfford();
     updateHUD();
   }
 
@@ -707,6 +821,10 @@
       else if (g.mag === Infinity) $("wAmmo").textContent = "탄약 ∞";
       else $("wAmmo").textContent = "탄약 " + p.ammo + " / " + g.mag;
     }
+    $("rWood").textContent = G.res.wood; $("rStone").textContent = G.res.stone; $("rIron").textContent = G.res.iron;
+    const pb = $("placeBtn");
+    if (G.carried) { pb.style.display = "block"; pb.textContent = "📦 " + BUILD_BY_ID[G.carried].name + " 설치"; }
+    else pb.style.display = "none";
     syncWeaponBtns();
   }
 
@@ -753,25 +871,45 @@
     ctx.strokeStyle = "rgba(255,170,80,0.22)"; ctx.setLineDash([10, 8]); ctx.lineWidth = 2;
     ctx.beginPath(); ctx.ellipse(px(c.x), py(c.y, 0), c.r, c.r * YSCALE, 0, 0, 6.3); ctx.stroke(); ctx.setLineDash([]);
 
+    // ground extras
+    for (const wz of G.warmZones) drawWarmZone(wz);
+    for (const l of G.lavas) drawLava(l);
+    for (const m of G.mines) drawMine(m);
+    for (const d of G.drops) drawDrop(d);
+    drawPlacePreview();
+
     // ground shadows for actors (drawn before tall objects)
     drawShadow(p.x, p.y, p.r);
     for (const z of G.zombies) drawShadow(z.x, z.y, z.r);
+    for (const a of G.allies) drawShadow(a.x, a.y, a.r);
+    for (const t of G.turrets) drawShadow(t.x, t.y, 13);
     drawShadow(c.x, c.y, 22);
     if (G.seller) drawShadow(G.seller.x, G.seller.y, 14);
+    if (G.hireNpc) drawShadow(G.hireNpc.x, G.hireNpc.y, 14);
 
     // ---- depth-sorted tall objects ----
     const items = [];
     for (const wl of G.walls) items.push({ k: "wall", o: wl, sy: wl.y + wl.h });
+    for (const wl of G.placedWalls) items.push({ k: "pwall", o: wl, sy: wl.y + wl.h });
     for (const z of G.zombies) items.push({ k: "zombie", o: z, sy: z.y });
+    for (const a of G.allies) items.push({ k: "ally", o: a, sy: a.y });
+    for (const t of G.turrets) items.push({ k: "turret", o: t, sy: t.y });
     items.push({ k: "campfire", o: c, sy: c.y });
+    if (G.bench) items.push({ k: "bench", o: G.bench, sy: G.bench.y });
     if (G.seller) items.push({ k: "seller", o: G.seller, sy: G.seller.y });
+    if (G.hireNpc) items.push({ k: "hire", o: G.hireNpc, sy: G.hireNpc.y });
     items.push({ k: "player", o: p, sy: p.y });
     items.sort((a, b) => a.sy - b.sy);
     for (const it of items) {
       if (it.k === "wall") drawWall(it.o);
+      else if (it.k === "pwall") drawPlacedWall(it.o);
       else if (it.k === "zombie") drawZombie(it.o);
+      else if (it.k === "ally") drawAlly(it.o);
+      else if (it.k === "turret") drawTurret(it.o);
       else if (it.k === "campfire") drawCampfire(it.o);
+      else if (it.k === "bench") drawBench(it.o);
       else if (it.k === "seller") drawSeller(it.o);
+      else if (it.k === "hire") drawHireNpc(it.o);
       else if (it.k === "player") drawPlayer(it.o);
     }
 
@@ -897,6 +1035,287 @@
     wg.addColorStop(0, "rgba(255,160,60,0.5)"); wg.addColorStop(1, "rgba(255,160,60,0)");
     ctx.fillStyle = wg; ctx.beginPath(); ctx.arc(fsx, fsy, c.r + 80, 0, 6.3); ctx.fill();
     ctx.restore();
+  }
+
+  // ================= NEW SYSTEMS =================
+  function killByRef(z) { const idx = G.zombies.indexOf(z); if (idx >= 0) killZombie(z, idx); }
+
+  // ----- drops / resources -----
+  function updateDrops(dt) {
+    const p = G.player;
+    for (let i = G.drops.length - 1; i >= 0; i--) {
+      const d = G.drops[i]; d.bob += dt * 4;
+      if (Math.hypot(p.x - d.x, p.y - d.y) < p.r + 16) {
+        G.res[d.type]++;
+        G.pops.push({ x: d.x, y: d.y, h: 22, t: 0.8, txt: "+1", col: RES_COL[d.type] });
+        G.drops.splice(i, 1);
+      }
+    }
+  }
+
+  // ----- allies -----
+  function nearestZombie(x, y, range) {
+    let best = null, bd = range;
+    for (const z of G.zombies) { if (z.flee) continue; const d = Math.hypot(z.x - x, z.y - y); if (d < bd) { bd = d; best = z; } }
+    return best;
+  }
+  function updateAllies(dt) {
+    const p = G.player;
+    G.allyRegenT -= dt; let regen = false;
+    if (G.allyRegenT <= 0) { G.allyRegenT = 20; regen = true; }
+    for (let i = G.allies.length - 1; i >= 0; i--) {
+      const a = G.allies[i];
+      if (regen) a.hp = Math.min(a.max, a.hp + 15);
+      if (a.cd > 0) a.cd -= dt;
+      if (a.hurtCd > 0) a.hurtCd -= dt;
+      if (a.kind === "medic") {
+        G.medicFrac += dt;
+        while (G.medicFrac >= 1) { G.medicFrac -= 1; p.hp = Math.min(100, p.hp + 1); for (const b of G.allies) b.hp = Math.min(b.max, b.hp + 1); }
+      }
+      const z = (a.kind === "melee" || a.kind === "gun") ? nearestZombie(a.x, a.y, 320) : null;
+      if (z) {
+        a.face = Math.atan2(z.y - a.y, z.x - a.x);
+        const d = Math.hypot(z.x - a.x, z.y - a.y);
+        if (a.kind === "melee") {
+          if (d > a.r + z.r + 2) { a.x += Math.cos(a.face) * 150 * dt; a.y += Math.sin(a.face) * 150 * dt; }
+          else if (a.cd <= 0) { a.cd = a.cdTime; damageZombie(z, a.dmg); killByRef(z); }
+        } else {
+          const g = GUN_BY_ID[a.gun];
+          if (d > 250) { a.x += Math.cos(a.face) * 120 * dt; a.y += Math.sin(a.face) * 120 * dt; }
+          if (a.cd <= 0) { a.cd = g.delay < 0.3 ? 0.5 : g.delay;
+            G.bullets.push({ x: a.x + Math.cos(a.face) * 14, y: a.y + Math.sin(a.face) * 14,
+              vx: Math.cos(a.face) * CFG.bulletSpeed, vy: Math.sin(a.face) * CFG.bulletSpeed,
+              dmg: g.dmg, life: 1.0, pierce: !!g.pierce, hit: g.pierce ? [] : null, big: g.id === "sniper" }); }
+        }
+      } else {
+        const fd = Math.hypot(p.x - a.x, p.y - a.y);
+        if (fd > 72) { const fa = Math.atan2(p.y - a.y, p.x - a.x); a.face = fa; a.x += Math.cos(fa) * 150 * dt; a.y += Math.sin(fa) * 150 * dt; }
+      }
+      resolve(a, a.r);
+      for (const z2 of G.zombies) { if (z2.flee) continue;
+        if (Math.hypot(z2.x - a.x, z2.y - a.y) < a.r + z2.r && a.hurtCd <= 0) { a.hurtCd = 0.7; a.hp -= (ZT[z2.type].dmgHp || 1); } }
+      if (a.hp <= 0) { G.pops.push({ x: a.x, y: a.y, h: 20, t: 1.0, txt: a.name + " 사망", col: "#ff6b8a" }); G.allies.splice(i, 1); }
+    }
+  }
+
+  // ----- structures -----
+  function updateStructures(dt) {
+    // mines
+    for (let i = G.mines.length - 1; i >= 0; i--) {
+      const m = G.mines[i]; let hit = false;
+      for (const z of G.zombies) { if (!z.flee && Math.hypot(z.x - m.x, z.y - m.y) < m.r + z.r) { hit = true; break; } }
+      if (hit) {
+        for (let j = G.zombies.length - 1; j >= 0; j--) { const z = G.zombies[j];
+          if (Math.hypot(z.x - m.x, z.y - m.y) < 90 + z.r) { damageZombie(z, 100); if (z.hp <= 0) killZombie(z, j); } }
+        for (let k = 0; k < 22; k++) { const a = Math.random() * 6.3, s = rand(60, 240);
+          G.parts.push({ x: m.x, y: m.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.3, 0.7), max: 0.7, r: rand(3, 7), col: k % 2 ? "#ff8a2a" : "#ffd24a", h: 16 }); }
+        G.mines.splice(i, 1);
+      }
+    }
+    // turrets
+    for (const t of G.turrets) {
+      if (t.cd > 0) t.cd -= dt;
+      if (t.ammo > 0 && t.cd <= 0) {
+        const z = nearestZombie(t.x, t.y, t.range);
+        if (z) { const ang = Math.atan2(z.y - t.y, z.x - t.x); t.cd = 0.1; t.ammo--; t.face = ang;
+          G.bullets.push({ x: t.x + Math.cos(ang) * 14, y: t.y + Math.sin(ang) * 14,
+            vx: Math.cos(ang) * CFG.bulletSpeed, vy: Math.sin(ang) * CFG.bulletSpeed, dmg: 3, life: 1.0, pierce: false, hit: null, big: false }); }
+      }
+    }
+    // lava traps (1회용)
+    for (let i = G.lavas.length - 1; i >= 0; i--) {
+      const l = G.lavas[i]; let hit = false;
+      for (const z of G.zombies) { if (!z.flee && Math.hypot(z.x - l.x, z.y - l.y) < l.r + z.r) { hit = true; break; } }
+      if (hit) {
+        for (let j = G.zombies.length - 1; j >= 0; j--) { const z = G.zombies[j];
+          if (Math.hypot(z.x - l.x, z.y - l.y) < l.r + 30 + z.r) {
+            if (ZT[z.type].ice) z.hp = 0; else { damageZombie(z, 30); z.burn = Math.max(z.burn, 0.5); }
+            if (z.hp <= 0) killZombie(z, j); } }
+        G.warmZones.push({ x: l.x, y: l.y, r: 90, t: 30 });
+        for (let k = 0; k < 24; k++) { const a = Math.random() * 6.3, s = rand(40, 210);
+          G.parts.push({ x: l.x, y: l.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.4, 0.9), max: 0.9, r: rand(4, 9), col: Math.random() < 0.5 ? "#ff6a1a" : "#ffcf4a", h: 14 }); }
+        G.lavas.splice(i, 1);
+      }
+    }
+    for (let i = G.warmZones.length - 1; i >= 0; i--) { G.warmZones[i].t -= dt; if (G.warmZones[i].t <= 0) G.warmZones.splice(i, 1); }
+    // placed walls damaged by adjacent zombies
+    for (let i = G.placedWalls.length - 1; i >= 0; i--) {
+      const w = G.placedWalls[i]; let touching = 0;
+      for (const z of G.zombies) { if (z.flee) continue;
+        const nx = Math.max(w.x, Math.min(z.x, w.x + w.w)), ny = Math.max(w.y, Math.min(z.y, w.y + w.h));
+        if (Math.hypot(z.x - nx, z.y - ny) < z.r + 6) touching++; }
+      if (touching) w.hp -= touching * 6 * dt;
+      if (w.hp <= 0) G.placedWalls.splice(i, 1);
+    }
+  }
+
+  // ----- craft / place / hire / buy -----
+  function canAffordRes(b) { return G.res.iron >= b.iron && G.res.wood >= b.wood && G.res.stone >= b.stone; }
+  function craftBuild(id) {
+    const b = BUILD_BY_ID[id]; if (!canAffordRes(b)) return;
+    if (b.place && G.carried) return;
+    G.res.iron -= b.iron; G.res.wood -= b.wood; G.res.stone -= b.stone;
+    if (b.place) G.carried = id; else G.inv.torch++;
+  }
+  function placeCarried() {
+    if (!G.carried) return;
+    const p = G.player, id = G.carried, fx = p.x + Math.cos(p.ang) * 50, fy = p.y + Math.sin(p.ang) * 50;
+    if (id === "mine") G.mines.push({ x: fx, y: fy, r: 16, blink: 0 });
+    else if (id === "turret") G.turrets.push({ x: fx, y: fy, ammo: 0, cd: 0, range: 300, face: p.ang });
+    else if (id === "lava") G.lavas.push({ x: fx, y: fy, r: 36 });
+    else if (id === "wall") G.placedWalls.push({ x: fx - 34, y: fy - 34, w: 68, h: 68, hp: 500, max: 500 });
+    G.carried = null;
+  }
+  function hirePerson(id) {
+    const h = HIRE_BY_ID[id]; if (G.money < h.price || G.allies.length >= 30) return;
+    G.money -= h.price; const p = G.player, a = rand(0, 6.3);
+    G.allies.push({ id, kind: h.kind, name: h.name, color: h.color, gun: h.gun, dmg: h.dmg || 0, cdTime: h.cd || 0,
+      x: p.x + Math.cos(a) * 36, y: p.y + Math.sin(a) * 36, r: 12, hp: h.hp, max: h.hp, cd: 0, hurtCd: 0, face: 0 });
+  }
+  function buyTurretAmmo() { if (G.money < TURRET_AMMO.price) return; G.money -= TURRET_AMMO.price; G.ammoStock += TURRET_AMMO.amount; }
+  function refillTurret(t) { if (!t) return; const amt = Math.min(G.ammoStock, 200); t.ammo += amt; G.ammoStock -= amt; }
+  function repairWall(w) { if (!w || G.res.wood <= 0 || w.hp >= w.max) return; G.res.wood--; w.hp = Math.min(w.max, w.hp + 100); }
+
+  // ----- context panel -----
+  function nearestStation() { const p = G.player; let best = null, bd = Infinity;
+    for (const s of G.stations) { const d = Math.hypot(p.x - s.x, p.y - s.y); if (d < s.range && d < bd) { bd = d; best = s; } } return best; }
+  function nearestTurretObj() { const p = G.player; let best = null, bd = 90;
+    for (const t of G.turrets) { const d = Math.hypot(p.x - t.x, p.y - t.y); if (d < bd) { bd = d; best = t; } } return best; }
+  function nearestDamagedWall() { const p = G.player; let best = null, bd = 90;
+    for (const w of G.placedWalls) { if (w.hp >= w.max) continue; const cx = w.x + w.w / 2, cy = w.y + w.h / 2;
+      const d = Math.hypot(p.x - cx, p.y - cy); if (d < bd) { bd = d; best = w; } } return best; }
+  function updatePanel() {
+    if (G.state !== "playing") return;
+    let ctx2 = null, key = "";
+    const st = nearestStation();
+    if (st) { ctx2 = { kind: "station", t: st.type }; key = "station:" + st.type; }
+    else { const tu = nearestTurretObj(); if (tu) { ctx2 = { kind: "turret", t: tu }; key = "turret"; }
+      else { const wl = nearestDamagedWall(); if (wl) { ctx2 = { kind: "wall", t: wl }; key = "wall"; } } }
+    if (key !== G.panelKey) { G.panelKey = key; G.panelCtx = ctx2; buildPanel(ctx2); }
+    else if (ctx2) { G.panelCtx = ctx2; }
+  }
+  function buildPanel(ctx2) {
+    const panel = $("panel"), title = $("panelTitle"); panel.innerHTML = ""; G._pbtns = [];
+    if (!ctx2) { panel.className = ""; title.className = ""; return; }
+    function mk(label, sub, cost, enFn, onClick) {
+      const b = document.createElement("button"); b.className = "sitem";
+      b.innerHTML = `<b>${label}</b>${sub ? `<small>${sub}</small>` : ""}${cost ? `<span class="cost">${cost}</span>` : ""}`;
+      b.onclick = onClick; panel.appendChild(b); G._pbtns.push({ el: b, en: enFn }); return b;
+    }
+    if (ctx2.kind === "station" && ctx2.t === "gun") {
+      title.textContent = "🛒 총 가게";
+      for (const g of GUNS) mk(g.name, "데미지 " + g.dmg, g.price + "원", () => G.money >= g.price && G.player.gun !== g.id, () => buyGun(g.id));
+      mk("터렛 탄약", TURRET_AMMO.amount + "발", TURRET_AMMO.price + "원", () => G.money >= TURRET_AMMO.price, () => buyTurretAmmo());
+    } else if (ctx2.kind === "station" && ctx2.t === "hire") {
+      title.textContent = "🧑 고용 (" + G.allies.length + "/30)";
+      for (const h of HIRES) mk(h.name, "체력 " + h.hp, h.price + "원", () => G.money >= h.price && G.allies.length < 30, () => { hirePerson(h.id); buildPanel(G.panelCtx); });
+    } else if (ctx2.kind === "station" && ctx2.t === "bench") {
+      title.textContent = "🛠️ 분쇄작업대";
+      for (const b of BUILDS) { const cost = [b.wood ? "🪵" + b.wood : "", b.stone ? "🪨" + b.stone : "", b.iron ? "🔩" + b.iron : ""].filter(Boolean).join(" ");
+        mk(b.name, b.desc, cost, () => canAffordRes(b) && !(b.place && G.carried), () => craftBuild(b.id)); }
+    } else if (ctx2.kind === "turret") {
+      title.textContent = "🔧 터렛 채우기";
+      mk("채우기", "보유탄약", "+200", () => G.ammoStock > 0, () => refillTurret(G.panelCtx && G.panelCtx.t));
+    } else if (ctx2.kind === "wall") {
+      title.textContent = "🧱 벽 수리";
+      mk("수리", "나무 1개", "+100", () => G.res.wood > 0, () => repairWall(G.panelCtx && G.panelCtx.t));
+    }
+    panel.className = "show"; title.className = "show";
+  }
+  function refreshPanelAfford() {
+    if (!G._pbtns) return;
+    for (const pb of G._pbtns) { const ok = pb.en(); pb.el.disabled = !ok; pb.el.classList.toggle("dis", !ok); }
+  }
+
+  // ----- inventory -----
+  function openInv() { if (G.state !== "playing") return; G.state = "inventory"; G.mouse.down = false; clearSticks(); buildInv(); $("inv").hidden = false; }
+  function buildInv() {
+    const list = $("invList"); list.innerHTML = "";
+    const rows = [["🪵 나무", G.res.wood], ["🪨 돌", G.res.stone], ["🔩 철", G.res.iron], ["🔫 터렛 탄약", G.ammoStock]];
+    for (const [n, v] of rows) { const r = document.createElement("div"); r.className = "invrow"; r.innerHTML = `<span>${n}</span><b>${v}</b>`; list.appendChild(r); }
+    const tr = document.createElement("div"); tr.className = "invrow";
+    tr.innerHTML = `<span>🔥 횃불 ×${G.inv.torch}${G.torch > 0 ? " (사용중 " + Math.ceil(G.torch) + "s)" : ""}</span>`;
+    const tb = document.createElement("button"); tb.textContent = "들기"; tb.disabled = !(G.inv.torch > 0 && G.torch <= 0);
+    tb.onclick = () => { if (G.inv.torch > 0 && G.torch <= 0) { G.inv.torch--; G.torch = 30; buildInv(); } };
+    tr.appendChild(tb); list.appendChild(tr);
+  }
+  function closeInv() { if (G.state === "inventory") { G.state = "playing"; $("inv").hidden = true; } }
+  $("invBtn").onclick = openInv; $("invClose").onclick = closeInv;
+  $("placeBtn").onclick = placeCarried;
+
+  // ----- draws for new entities -----
+  function drawDrop(d) {
+    const yo = Math.sin(d.bob) * 3, cx = px(d.x), gy = py(d.y, 0);
+    ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.beginPath(); ctx.ellipse(cx, gy, 9, 5, 0, 0, 6.3); ctx.fill();
+    ctx.fillStyle = RES_COL[d.type]; const yy = gy - 14 + yo;
+    ctx.fillRect(cx - 7, yy - 7, 14, 14);
+    ctx.strokeStyle = "rgba(0,0,0,0.4)"; ctx.lineWidth = 1.5; ctx.strokeRect(cx - 7, yy - 7, 14, 14);
+  }
+  function drawWarmZone(wz) {
+    const cx = px(wz.x), cy = py(wz.y, 0);
+    ctx.globalAlpha = Math.min(1, wz.t / 6) * 0.35;
+    const g = ctx.createRadialGradient(cx, cy, 6, cx, cy, wz.r);
+    g.addColorStop(0, "rgba(255,120,40,0.8)"); g.addColorStop(1, "rgba(255,120,40,0)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(cx, cy, wz.r, wz.r * YSCALE, 0, 0, 6.3); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  function drawMine(m) {
+    const cx = px(m.x), cy = py(m.y, 0);
+    ctx.fillStyle = "#2a2a2a"; ctx.beginPath(); ctx.ellipse(cx, cy, m.r, m.r * YSCALE, 0, 0, 6.3); ctx.fill();
+    ctx.fillStyle = (Math.floor(performance.now() / 300) % 2) ? "#ff3030" : "#601010";
+    ctx.beginPath(); ctx.arc(cx, cy - 2, 3, 0, 6.3); ctx.fill();
+  }
+  function drawLava(l) {
+    const cx = px(l.x), cy = py(l.y, 0), t = performance.now() / 400;
+    ctx.fillStyle = "#7a1a00"; ctx.beginPath(); ctx.ellipse(cx, cy, l.r, l.r * YSCALE, 0, 0, 6.3); ctx.fill();
+    ctx.fillStyle = (Math.sin(t) > 0) ? "#ff7a1a" : "#ffb24a";
+    ctx.beginPath(); ctx.ellipse(cx, cy, l.r * 0.6, l.r * 0.6 * YSCALE, 0, 0, 6.3); ctx.fill();
+  }
+  function drawTurret(t) {
+    const cx = px(t.x), gy = py(t.y, 0), by = gy - 14;
+    sphere(cx, by, 13, t.ammo > 0 ? "#5a6472" : "#3a3f48");
+    ctx.strokeStyle = "#cdd3dc"; ctx.lineWidth = 5; ctx.lineCap = "round";
+    const fa = t.face || 0; ctx.beginPath(); ctx.moveTo(cx, by); ctx.lineTo(cx + Math.cos(fa) * 22, by + Math.sin(fa) * 22 * YSCALE); ctx.stroke();
+    ctx.fillStyle = "#9fb0c8"; ctx.font = "10px sans-serif"; ctx.textAlign = "center"; ctx.fillText(t.ammo, cx, by - 18);
+  }
+  function drawAlly(a) {
+    const cx = px(a.x), gy = py(a.y, 0), by = gy - a.r;
+    sphere(cx, by, a.r, a.color);
+    // weapon hint
+    ctx.strokeStyle = a.kind === "melee" ? "#dfe6f0" : "#222"; ctx.lineWidth = 3; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(cx, by); ctx.lineTo(cx + Math.cos(a.face) * (a.r + 10), by + Math.sin(a.face) * (a.r + 10) * YSCALE); ctx.stroke();
+    if (a.hp < a.max) { const w = 22; ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(cx - w / 2, by - a.r - 10, w, 3);
+      ctx.fillStyle = "#5fd08a"; ctx.fillRect(cx - w / 2, by - a.r - 10, w * (a.hp / a.max), 3); }
+  }
+  function drawPlacedWall(w) {
+    const x1 = w.x, y1 = w.y, x2 = w.x + w.w, y2 = w.y + w.h, h = 40;
+    ctx.fillStyle = "#5a4a2a"; quad(px(x1), py(y1, h), px(x1), py(y2, h), px(x1), py(y2, 0), px(x1), py(y1, 0));
+    ctx.fillStyle = "#4a3c20"; quad(px(x2), py(y1, h), px(x2), py(y2, h), px(x2), py(y2, 0), px(x2), py(y1, 0));
+    ctx.fillStyle = "#3a2e18"; quad(px(x1), py(y2, h), px(x2), py(y2, h), px(x2), py(y2, 0), px(x1), py(y2, 0));
+    ctx.fillStyle = "#7a6336"; quad(px(x1), py(y1, h), px(x2), py(y1, h), px(x2), py(y2, h), px(x1), py(y2, h));
+    const cx = px(x1 + w.w / 2);
+    ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(cx - 22, py(y1, h) - 8, 44, 4);
+    ctx.fillStyle = "#9fd"; ctx.fillRect(cx - 22, py(y1, h) - 8, 44 * (w.hp / w.max), 4);
+  }
+  function drawBench(b) {
+    const cx = px(b.x), gy = py(b.y, 0), by = gy - 12;
+    ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.beginPath(); ctx.ellipse(cx, gy, 18, 9, 0, 0, 6.3); ctx.fill();
+    ctx.fillStyle = "#6a5030"; ctx.fillRect(cx - 16, by - 10, 32, 18);
+    ctx.fillStyle = "#8a6a40"; ctx.fillRect(cx - 16, by - 12, 32, 5);
+    ctx.font = "13px sans-serif"; ctx.textAlign = "center"; ctx.fillText("🛠️", cx, by - 16);
+  }
+  function drawHireNpc(s) {
+    const t = performance.now() / 1000, cx = px(s.x), gy = py(s.y, 0);
+    ctx.fillStyle = "rgba(120,255,160,0.2)"; ctx.beginPath(); ctx.arc(cx, gy - 14, 24 + Math.sin(t * 3) * 3, 0, 6.3); ctx.fill();
+    sphere(cx, gy - 14, 13, "#3aa05a"); sphere(cx, gy - 30, 9, "#e8c79a");
+    ctx.fillStyle = "#fff"; ctx.font = "16px sans-serif"; ctx.textAlign = "center"; ctx.fillText("🧑", cx, gy - 42);
+  }
+  function drawPlacePreview() {
+    if (!G.carried) return;
+    const p = G.player, fx = p.x + Math.cos(p.ang) * 50, fy = p.y + Math.sin(p.ang) * 50;
+    ctx.globalAlpha = 0.5; ctx.strokeStyle = "#9ff0a8"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(px(fx), py(fy, 0), 30, 30 * YSCALE, 0, 0, 6.3); ctx.stroke();
+    ctx.globalAlpha = 1;
   }
 
   // ---------- Flow ----------
