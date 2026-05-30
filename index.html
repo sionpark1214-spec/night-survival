@@ -2,114 +2,149 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-<meta name="theme-color" content="#0a0a14" />
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="mobile-web-app-capable" content="yes" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>밤의 생존</title>
 <style>
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; margin: 0; padding: 0; }
-  html, body {
-    width: 100%; height: 100%;
-    background: #05050c;
-    overflow: hidden;
-    overscroll-behavior: none;
-    touch-action: none;
-    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", sans-serif;
-    color: #f0e8d8;
-  }
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0d14;
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Malgun Gothic", sans-serif;
+    color: #eee; cursor: crosshair; }
   #game { display: block; position: fixed; inset: 0; }
 
   /* HUD */
-  #hud {
-    position: fixed; top: 0; left: 0; right: 0;
-    padding: calc(env(safe-area-inset-top) + 10px) 14px 0;
-    display: flex; justify-content: space-between; align-items: flex-start;
-    pointer-events: none; z-index: 5;
-  }
-  .panel {
-    background: rgba(10,10,22,0.55);
-    border: 1px solid rgba(255,180,80,0.25);
-    border-radius: 12px;
-    padding: 8px 12px;
-    backdrop-filter: blur(4px);
-  }
-  .label { font-size: 11px; letter-spacing: 1px; color: #a89878; margin-bottom: 4px; }
-  .bar { width: 130px; height: 10px; border-radius: 6px; background: rgba(255,255,255,0.08); overflow: hidden; }
-  .bar > i { display: block; height: 100%; width: 100%; border-radius: 6px; transition: width 0.12s linear; }
-  #fireFill { background: linear-gradient(90deg,#ff5a1f,#ffb347); }
-  #hpFill { background: linear-gradient(90deg,#ff2d55,#ff7a8a); }
-  #clock { text-align: right; }
-  #clockTime { font-size: 26px; font-weight: 800; letter-spacing: 1px; line-height: 1; text-shadow: 0 0 12px rgba(255,180,80,0.4); }
-  #wave { font-size: 11px; color: #a89878; margin-top: 4px; }
-  #woodCount { font-size: 22px; font-weight: 800; }
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  #topbar { position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+    text-align: center; background: rgba(8,10,18,0.6); border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px; padding: 8px 22px; backdrop-filter: blur(4px); }
+  #dayText { font-size: 22px; font-weight: 800; letter-spacing: 1px; }
+  #phaseText { font-size: 13px; margin-top: 2px; color: #ffd98a; }
+  #timeText { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
 
-  /* Center overlays */
-  .overlay {
-    position: fixed; inset: 0; z-index: 20;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    text-align: center; padding: 24px;
-    background: radial-gradient(ellipse at center, rgba(10,10,25,0.7), rgba(3,3,10,0.95));
-  }
-  .overlay h1 { font-size: 48px; font-weight: 900; letter-spacing: 2px; margin-bottom: 6px;
-    background: linear-gradient(180deg,#ffd98a,#ff7a3c); -webkit-background-clip: text; background-clip: text; color: transparent;
-    text-shadow: 0 0 40px rgba(255,140,50,0.3); }
-  .overlay h2 { font-size: 34px; font-weight: 900; margin-bottom: 8px; }
-  .overlay p { font-size: 15px; color: #b8a988; line-height: 1.7; max-width: 340px; margin-bottom: 8px; }
-  .btn {
-    margin-top: 22px; padding: 15px 44px; font-size: 19px; font-weight: 800;
-    border: none; border-radius: 14px; color: #1a0e00;
-    background: linear-gradient(180deg,#ffcf6b,#ff9a3c);
-    box-shadow: 0 8px 24px rgba(255,140,50,0.35); cursor: pointer;
-  }
+  #stats { position: absolute; top: 14px; left: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .statrow { display: flex; align-items: center; gap: 8px; background: rgba(8,10,18,0.55);
+    border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 6px 10px; }
+  .statrow .ico { font-size: 16px; width: 20px; text-align: center; }
+  .bar { width: 160px; height: 13px; border-radius: 7px; background: rgba(255,255,255,0.1); overflow: hidden; }
+  .bar > i { display: block; height: 100%; border-radius: 7px; transition: width .1s linear; }
+  #tempFill { background: linear-gradient(90deg,#36c5ff,#9ff0ff); }
+  #hpFill { background: linear-gradient(90deg,#ff3b5c,#ff8aa0); }
+  .statval { font-size: 13px; font-weight: 700; width: 56px; }
+  #money { font-size: 20px; font-weight: 800; color: #ffd76b; }
+
+  #weaponBox { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+    background: rgba(8,10,18,0.6); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px;
+    padding: 8px 18px; text-align: center; min-width: 220px; }
+  #wName { font-size: 18px; font-weight: 800; }
+  #wAmmo { font-size: 14px; color: #9fd; margin-top: 2px; }
+  #shopHint { position: absolute; bottom: 16px; right: 16px; background: rgba(20,40,80,0.7);
+    border: 1px solid rgba(120,180,255,0.4); border-radius: 10px; padding: 8px 14px; font-size: 14px;
+    color: #cfe3ff; display: none; }
+
+  /* Overlays */
+  .overlay { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center; padding: 24px;
+    background: radial-gradient(ellipse at center, rgba(12,16,28,0.82), rgba(4,6,12,0.97)); cursor: default; }
+  .overlay h1 { font-size: 58px; font-weight: 900; letter-spacing: 4px; margin-bottom: 6px;
+    background: linear-gradient(180deg,#cfe6ff,#5b8fd6); -webkit-background-clip: text; background-clip: text;
+    color: transparent; text-shadow: 0 0 50px rgba(80,140,220,0.4); }
+  .overlay h2 { font-size: 40px; font-weight: 900; margin-bottom: 10px; }
+  .overlay p { font-size: 15px; color: #b9c2d2; line-height: 1.8; max-width: 460px; margin-bottom: 4px; }
+  .btn { margin-top: 22px; padding: 15px 50px; font-size: 20px; font-weight: 800; border: none;
+    border-radius: 14px; color: #08101e; background: linear-gradient(180deg,#bfe0ff,#5fa0e6);
+    box-shadow: 0 8px 26px rgba(80,150,230,0.35); cursor: pointer; }
   .btn:active { transform: translateY(2px); }
-  .stat { font-size: 16px; color: #d8c8a8; margin: 2px 0; }
-  .hint { margin-top: 18px; font-size: 13px; color: #8a7a5a; }
+  .keys { margin-top: 16px; font-size: 13px; color: #8090a4; line-height: 1.9; }
   [hidden] { display: none !important; }
 
-  /* Joystick */
-  #stick { position: fixed; z-index: 8; pointer-events: none; }
-  #stickBase, #stickKnob { position: absolute; border-radius: 50%; transform: translate(-50%,-50%); }
-  #stickBase { width: 120px; height: 120px; background: rgba(255,255,255,0.06); border: 2px solid rgba(255,200,120,0.25); }
-  #stickKnob { width: 54px; height: 54px; background: rgba(255,200,120,0.35); border: 2px solid rgba(255,220,160,0.6); }
+  /* Shop */
+  #shop { z-index: 25; cursor: default; }
+  #shopPanel { background: linear-gradient(180deg,#161c2a,#0e1320); border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 18px; padding: 22px 24px; width: min(560px, 92vw); max-height: 86vh; overflow-y: auto; }
+  #shopPanel h2 { font-size: 24px; margin-bottom: 4px; }
+  #shopMoney { font-size: 15px; color: #ffd76b; margin-bottom: 14px; }
+  .gun { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); margin-bottom: 8px; }
+  .gun .ginfo { flex: 1; text-align: left; }
+  .gun .gname { font-size: 16px; font-weight: 800; }
+  .gun .gstat { font-size: 12px; color: #97a3b6; margin-top: 2px; }
+  .gun .gbuy { padding: 9px 16px; font-size: 14px; font-weight: 800; border: none; border-radius: 9px;
+    background: linear-gradient(180deg,#ffd76b,#f0b22e); color: #2a1c00; cursor: pointer; white-space: nowrap; }
+  .gun .gbuy:disabled { background: #333a48; color: #6a7488; cursor: not-allowed; }
+  .gun.owned { border-color: #5fd08a; }
+  .gun.owned .gbuy { background: #2a6b45; color: #bff5d2; }
+  #shopClose { margin-top: 10px; width: 100%; padding: 12px; font-size: 16px; font-weight: 800;
+    border: none; border-radius: 12px; background: #2a3142; color: #dfe6f2; cursor: pointer; }
+  #shopHint { pointer-events: auto; cursor: pointer; }
 
-  #flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 15; }
+  /* Touch controls */
+  #touch { position: fixed; inset: 0; z-index: 6; pointer-events: none; }
+  .stick { position: absolute; pointer-events: none; display: none; }
+  .stickBase, .stickKnob { position: absolute; border-radius: 50%; transform: translate(-50%,-50%); }
+  .stickBase { width: 128px; height: 128px; background: rgba(255,255,255,0.05); border: 2px solid rgba(255,255,255,0.18); }
+  .stickKnob { width: 58px; height: 58px; background: rgba(180,210,255,0.28); border: 2px solid rgba(200,225,255,0.55); }
+  #aimStick .stickKnob { background: rgba(255,180,120,0.3); border-color: rgba(255,200,150,0.6); }
+  .wbtn { pointer-events: auto; position: absolute; width: 64px; height: 64px; border-radius: 16px;
+    border: 2px solid rgba(255,255,255,0.18); background: rgba(12,16,26,0.7); color: #fff; font-size: 28px;
+    display: flex; align-items: center; justify-content: center; cursor: pointer; }
+  .wbtn.active { border-color: #ffd76b; background: rgba(60,46,12,0.8); }
+  #btnKnife { right: 90px; bottom: 96px; }
+  #btnGun { right: 16px; bottom: 96px; }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
-<div id="flash"></div>
 
 <div id="hud" hidden>
-  <div class="panel">
-    <div class="label">🔥 모닥불</div>
-    <div class="bar"><i id="fireFill"></i></div>
-    <div class="label" style="margin:8px 0 4px">❤️ 체력</div>
-    <div class="bar"><i id="hpFill"></i></div>
+  <div id="stats">
+    <div class="statrow"><span class="ico">🌡️</span><div class="bar"><i id="tempFill"></i></div><span class="statval" id="tempVal">100%</span></div>
+    <div class="statrow"><span class="ico">❤️</span><div class="bar"><i id="hpFill"></i></div><span class="statval" id="hpVal">100</span></div>
+    <div class="statrow"><span class="ico">💰</span><span id="money">100원</span></div>
   </div>
-  <div class="panel" id="clock">
-    <div id="clockTime">21:00</div>
-    <div id="wave">밤이 시작됐다</div>
-    <div style="margin-top:6px">🪵 <span id="woodCount">0</span></div>
+  <div id="topbar">
+    <div id="dayText">1일차</div>
+    <div id="timeText">0:20</div>
+    <div id="phaseText">☀️ 낮 — 좀비를 대비해라</div>
   </div>
+  <div id="weaponBox">
+    <div id="wName">🔪 칼</div>
+    <div id="wAmmo">근접 무기</div>
+  </div>
+  <div id="shopHint">🛒 총 가게 — 상인을 눌러 구매</div>
 </div>
 
-<div id="stick" hidden><div id="stickBase"></div><div id="stickKnob"></div></div>
+<div id="touch" hidden>
+  <div class="stick" id="moveStick"><div class="stickBase"></div><div class="stickKnob"></div></div>
+  <div class="stick" id="aimStick"><div class="stickBase"></div><div class="stickKnob"></div></div>
+  <div class="wbtn active" id="btnKnife">🔪</div>
+  <div class="wbtn" id="btnGun">🔫</div>
+</div>
 
-<div class="overlay" id="startScreen">
+<div class="overlay" id="title">
   <h1>밤의 생존</h1>
-  <p>모닥불 곁에서 아침까지 버텨라.<br>
-  어둠 속 <b>🪵 장작</b>을 주워 와 불을 살리고,<br>
-  불이 꺼지면 <b>괴물</b>이 너를 덮친다.</p>
-  <p class="hint">화면을 드래그해서 이동 · 장작 위로 가면 자동으로 줍기<br>불 근처에 서 있으면 장작이 불에 들어간다</p>
-  <button class="btn" id="startBtn">밤 시작</button>
+  <p>날이 저물면 좀비가 사방에서 몰려온다.<br>
+  낮 동안 돈을 모아 총을 사고, <b>캠프파이어</b> 곁에서 온도와 체력을 채워라.<br>
+  온도나 체력이 <b>0</b>이 되면 끝이다.</p>
+  <div class="keys">
+    <b>WASD</b> 이동 · <b>마우스</b> 조준 · <b>클릭</b> 발사 (미니건은 꾹) · <b>1</b> 칼 / <b>2</b> 총<br>
+    좀비를 잡으면 돈이 들어온다 · 밤이 깊을수록 좀비는 강해진다
+  </div>
+  <button class="btn" id="startBtn">게임 시작</button>
 </div>
 
-<div class="overlay" id="endScreen" hidden>
-  <h2 id="endTitle"></h2>
-  <p id="endMsg"></p>
-  <div class="stat" id="endStats"></div>
-  <button class="btn" id="restartBtn">다시 도전</button>
+<div class="overlay" id="dead" hidden>
+  <h2>💀 사망</h2>
+  <p id="deadMsg"></p>
+  <p id="deadStats" style="color:#ffd76b;margin-top:8px;font-size:16px;"></p>
+  <button class="btn" id="restartBtn">타이틀로</button>
+</div>
+
+<div class="overlay" id="shop" hidden>
+  <div id="shopPanel">
+    <h2>🛒 총 가게</h2>
+    <div id="shopMoney">보유 금액: 100원</div>
+    <div id="shopList"></div>
+    <button id="shopClose">닫기 (ESC)</button>
+  </div>
 </div>
 
 <script>
@@ -117,11 +152,6 @@
 (function () {
   const cv = document.getElementById("game");
   const ctx = cv.getContext("2d");
-  const $ = (id) => document.getElementById(id);
-  const fireFill = $("fireFill"), hpFill = $("hpFill"), woodCount = $("woodCount");
-  const clockTime = $("clockTime"), wave = $("wave");
-
-  // ---- World / view ----
   let W = 0, H = 0, DPR = 1;
   function resize() {
     DPR = Math.min(window.devicePixelRatio || 1, 2);
@@ -130,527 +160,748 @@
     cv.style.width = W + "px"; cv.style.height = H + "px";
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   }
-  window.addEventListener("resize", resize);
-  resize();
+  window.addEventListener("resize", resize); resize();
+  const $ = (id) => document.getElementById(id);
 
-  // World is larger than screen; camera follows player.
-  const WORLD = 1400; // half-size of square world (so world spans -1400..1400)
+  // ===== 2.5D projection =====
+  const YSCALE = 0.62;   // vertical squash -> high-angle 3/4 view
+  const WALL_H = 52;     // wall height
+  const BULLET_H = 22;   // bullets fly at this height
+  let camX = 0, camY = 0;
+  const px = (wx) => wx - camX;
+  const py = (wy, wz) => (wy - camY) * YSCALE - (wz || 0);
+  function quad(ax, ay, bx, by, cx, cy, dx, dy) {
+    ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.lineTo(cx, cy); ctx.lineTo(dx, dy); ctx.closePath(); ctx.fill();
+  }
+  function sphere(cx, cy, r, color, white) {
+    const g = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.4, r * 0.1, cx, cy, r);
+    if (white) { g.addColorStop(0, "#fff"); g.addColorStop(1, "#fff"); }
+    else { g.addColorStop(0, shade(color, 1.35)); g.addColorStop(0.7, color); g.addColorStop(1, shade(color, 0.65)); }
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.3); ctx.fill();
+  }
+  function shade(hex, f) {
+    const n = parseInt(hex.slice(1), 16);
+    let r = Math.min(255, ((n >> 16) & 255) * f) | 0;
+    let g = Math.min(255, ((n >> 8) & 255) * f) | 0;
+    let b = Math.min(255, (n & 255) * f) | 0;
+    return "rgb(" + r + "," + g + "," + b + ")";
+  }
 
-  // ---- Game state ----
-  const G = {
-    running: false,
-    t: 0,                 // elapsed seconds
-    night: 600,           // night length in seconds (21:00 -> 06:00 mapped)
-    fire: 100,            // 0..100 fuel
-    hp: 100,
-    wood: 0,              // carried wood
-    player: { x: 0, y: 0, r: 16, ang: -Math.PI / 2 },
-    fireX: 0, fireY: 0, fireR: 30,
-    monsters: [],
-    logs: [],             // wood pickups in world
-    parts: [],            // particles
-    spawnTimer: 0,
-    woodTimer: 0,
-    kills: 0,
-    woodBurned: 0,
-    shake: 0,
+  // ---------- Weapons ----------
+  const GUNS = [
+    { id:"pistol",   name:"권총",       price:500,   dmg:10,  delay:1.0,  mag:3,        reload:5.0, auto:false },
+    { id:"revolver", name:"리볼버",     price:600,   dmg:10,  delay:0.1,  mag:6,        reload:4.6, auto:false },
+    { id:"smg",      name:"기관단총",   price:1000,  dmg:5,   delay:0.1,  mag:20,       reload:5.4, auto:true  },
+    { id:"double",   name:"더블권총",   price:1100,  dmg:30,  delay:0.1,  mag:1,        reload:4.1, auto:false },
+    { id:"shotgun",  name:"샷건",       price:2000,  dmg:35,  delay:2.5,  mag:3,        reload:7.0, auto:false, pellets:5 },
+    { id:"sniper",   name:"스나이퍼",   price:3000,  dmg:100, delay:3.0,  mag:6,        reload:8.0, auto:false, pierce:true },
+    { id:"energy",   name:"에너지권총", price:5000,  dmg:20,  delay:0.1,  mag:Infinity, reload:0,   auto:false },
+    { id:"flame",    name:"화염방사기", price:10000, dmg:50,  delay:0.05, mag:Infinity, reload:0,   auto:true,  flame:true },
+    { id:"minigun",  name:"미니건",     price:30000, dmg:100, delay:0.06, mag:300,      reload:30,  auto:true,  slow:true },
+  ];
+  const GUN_BY_ID = {}; GUNS.forEach(g => GUN_BY_ID[g.id] = g);
+  function gunStatLine(g) {
+    const mag = g.mag === Infinity ? "∞" : g.mag;
+    const rl = g.reload ? `, 재장전 ${g.reload}s` : ", 재장전 없음";
+    let extra = "";
+    if (g.flame) extra = " · 근접 화염+화상";
+    if (g.slow) extra = " · 이동 느려짐";
+    if (g.pierce) extra = " · 관통";
+    return `데미지 ${g.dmg} · ${g.auto?"연사":"클릭"} ${g.delay}s · ${mag}발${rl}${extra}`;
+  }
+
+  // ---------- Zombie types ----------
+  const ZT = {
+    normal:  { name:"좀비",     hp:10,  spd:78,  dmgHp:1,  reward:5,   color:"#5a7a4a", r:15, since:1 },
+    fast:    { name:"빠른좀비", hp:10,  spd:158, dmgHp:1,  reward:10,  color:"#7ad17a", r:13, since:3 },
+    suicide: { name:"자폭좀비", hp:10,  spd:98,  dmgHp:10, reward:20,  color:"#d97a3a", r:15, since:6,  explode:true },
+    poison:  { name:"독좀비",   hp:10,  spd:70,  dmgHp:10, reward:25,  color:"#7ad14a", r:16, since:15, poison:true },
+    ice:     { name:"얼음좀비", hp:10,  spd:72,  dmgTemp:10,reward:30, color:"#6cc8ff", r:16, since:20, ice:true },
+    split:   { name:"분열좀비", hp:10,  spd:82,  dmgHp:10, reward:30,  color:"#c86cff", r:17, since:25, split:true },
+    splitling:{name:"새끼좀비", hp:5,   spd:120, dmgHp:5,  reward:0,   color:"#d9a6ff", r:9 },
+    miniboss:{ name:"미니보스", hp:100, spd:56,  dmgHp:15, reward:500, color:"#b03050", r:30, boss:true },
+    boss:    { name:"보스",     hp:300, spd:50,  dmgHp:20, reward:1000,color:"#7a1030", r:46, boss:true },
+  };
+  const NORMAL_TYPES = ["normal","fast","suicide","poison","ice","split"];
+
+  // ---------- Config ----------
+  const CFG = {
+    playerSpeed: 210, playerR: 16,
+    knifeRange: 50, knifeArc: 1.5, knifeDelay: 0.4, knifeDmg: 5, knifeBackstab: 10,
+    tempDrain: 2, regenTemp: 10, regenHp: 10, campRadius: 110,
+    dayBase: 20, dayInc: 30, night: 60,
+    bulletSpeed: 820, flameRange: 130,
   };
 
-  const SPEED = 215;          // player px/s
-  const SAFE_PAD = 70;        // bright radius beyond fireR where monsters won't enter
+  // ---------- World ----------
+  const WORLD = 2200;
+  const G = {
+    state: "title", paused: false,
+    day: 1, phase: "day", timer: CFG.dayBase,
+    money: 100,
+    player: null, houses: [], walls: [], campfire: null, seller: null,
+    zombies: [], bullets: [], parts: [], pops: [], pools: [],
+    spawnQueue: [], spawnTimer: 0, fleeT: 0,
+    mouse: { sx: 0, sy: 0, down: false }, keys: {},
+    move: { id: null, dx: 0, dy: 0, mag: 0 },
+    aim: { id: null, active: false, ang: 0 },
+    killCount: 0, _hoverPrev: false,
+  };
+  function rand(a, b) { return a + Math.random() * (b - a); }
 
-  // ---- Input: drag joystick anywhere ----
-  const input = { active: false, id: null, sx: 0, sy: 0, dx: 0, dy: 0, mag: 0 };
-  const stick = document.getElementById("stick");
-  const stickBase = document.getElementById("stickBase");
-  const stickKnob = document.getElementById("stickKnob");
+  // ---------- Houses ----------
+  function makeHouse(x, y, w, h, doorSide, opts) {
+    const T = 16, DG = 84;
+    const house = { x, y, w, h, doorSide, ...(opts || {}) };
+    const walls = [];
+    const sides = {
+      top:    [x, y, w, T, "h"],
+      bottom: [x, y + h - T, w, T, "h"],
+      left:   [x, y, T, h, "v"],
+      right:  [x + w - T, y, T, h, "v"],
+    };
+    for (const side in sides) {
+      const [rx, ry, rw, rh, dir] = sides[side];
+      if (side === doorSide) {
+        if (dir === "h") {
+          const gapStart = rx + (rw - DG) / 2;
+          walls.push({ x: rx, y: ry, w: gapStart - rx, h: rh });
+          walls.push({ x: gapStart + DG, y: ry, w: rx + rw - (gapStart + DG), h: rh });
+        } else {
+          const gapStart = ry + (rh - DG) / 2;
+          walls.push({ x: rx, y: ry, w: rw, h: gapStart - ry });
+          walls.push({ x: rx, y: gapStart + DG, w: rw, h: ry + rh - (gapStart + DG) });
+        }
+      } else {
+        walls.push({ x: rx, y: ry, w: rw, h: rh });
+      }
+    }
+    house.walls = walls;
+    return house;
+  }
 
-  function setStick(px, py, kx, ky) {
-    stick.hidden = false;
-    stickBase.style.left = px + "px"; stickBase.style.top = py + "px";
-    stickKnob.style.left = kx + "px"; stickKnob.style.top = ky + "px";
-  }
-  function startDrag(x, y, id) {
-    input.active = true; input.id = id; input.sx = x; input.sy = y;
-    input.dx = 0; input.dy = 0; input.mag = 0;
-    setStick(x, y, x, y);
-  }
-  function moveDrag(x, y) {
-    let dx = x - input.sx, dy = y - input.sy;
-    const max = 60;
-    const d = Math.hypot(dx, dy);
-    if (d > max) { dx = dx / d * max; dy = dy / d * max; }
-    input.dx = dx / max; input.dy = dy / max;
-    input.mag = Math.min(1, d / max);
-    setStick(input.sx, input.sy, input.sx + dx, input.sy + dy);
-  }
-  function endDrag() {
-    input.active = false; input.id = null; input.mag = 0; input.dx = 0; input.dy = 0;
-    stick.hidden = true;
+  function generateMap() {
+    G.houses = []; G.walls = [];
+    // only two houses: spawn(campfire) house + gun shop
+    const ch = makeHouse(-160, -150, 300, 270, "right", { hasCampfire: true });
+    const sh = makeHouse(560, -140, 300, 250, "left", { hasSeller: true });
+    G.houses.push(ch, sh);
+    G.campfire = { x: ch.x + ch.w / 2, y: ch.y + ch.h / 2, r: CFG.campRadius };
+    G.seller = { x: sh.x + sh.w / 2, y: sh.y + sh.h / 2 - 10 };
+    for (const ho of G.houses) for (const wl of ho.walls) G.walls.push(wl);
   }
 
+  // ---------- Collision ----------
+  function resolve(o, r) {
+    for (const wl of G.walls) {
+      const nx = Math.max(wl.x, Math.min(o.x, wl.x + wl.w));
+      const ny = Math.max(wl.y, Math.min(o.y, wl.y + wl.h));
+      let dx = o.x - nx, dy = o.y - ny;
+      let d2 = dx * dx + dy * dy;
+      if (d2 < r * r) {
+        let d = Math.sqrt(d2);
+        if (d > 0.0001) { const push = r - d; o.x += dx / d * push; o.y += dy / d * push; }
+        else {
+          const left = o.x - wl.x, right = wl.x + wl.w - o.x, top = o.y - wl.y, bottom = wl.y + wl.h - o.y;
+          const m = Math.min(left, right, top, bottom);
+          if (m === left) o.x = wl.x - r; else if (m === right) o.x = wl.x + wl.w + r;
+          else if (m === top) o.y = wl.y - r; else o.y = wl.y + wl.h + r;
+        }
+      }
+    }
+    o.x = Math.max(-WORLD, Math.min(WORLD, o.x));
+    o.y = Math.max(-WORLD, Math.min(WORLD, o.y));
+  }
+
+  // ---------- Start / die ----------
+  function startGame() {
+    G.state = "playing";
+    G.day = 1; G.phase = "day"; G.timer = CFG.dayBase; G.money = 100;
+    G.zombies = []; G.bullets = []; G.parts = []; G.pops = []; G.pools = [];
+    G.spawnQueue = []; G.spawnTimer = 0; G.killCount = 0; G._hoverPrev = false;
+    generateMap();
+    const c = G.campfire;
+    G.player = { x: c.x, y: c.y + 30, r: CFG.playerR, ang: 0, hp: 100, temp: 100,
+      weapon: "knife", gun: null, ammo: 0, reloading: 0, fireCd: 0, knifeCd: 0, swing: 0, hurtFlash: 0 };
+    $("title").hidden = true; $("dead").hidden = true; $("shop").hidden = true;
+    $("hud").hidden = false; $("touch").hidden = false;
+  }
+  function die(reason) {
+    G.state = "dead"; clearSticks();
+    $("hud").hidden = true; $("shop").hidden = true; $("touch").hidden = true;
+    $("deadMsg").textContent = reason;
+    $("deadStats").textContent = `${G.day}일차까지 생존 · 좀비 ${G.killCount}마리 처치`;
+    $("dead").hidden = false;
+  }
+
+  // ---------- Night spawn ----------
+  function beginNight() {
+    G.phase = "night"; G.timer = CFG.night;
+    const day = G.day;
+    const avail = NORMAL_TYPES.filter(t => day >= ZT[t].since);
+    const total = Math.min(90, 6 + day * 3);
+    G.spawnQueue = [];
+    for (let i = 0; i < total; i++) {
+      const r = Math.random();
+      G.spawnQueue.push((r < 0.5 || avail.length === 1) ? "normal" : avail[(Math.random() * avail.length) | 0]);
+    }
+    if (day % 30 === 0) G.spawnQueue.unshift("boss");
+    if (day % 5 === 0) G.spawnQueue.unshift("miniboss");
+    G.spawnTimer = 0.4;
+  }
+  function spawnZombie(type) {
+    const def = ZT[type]; const p = G.player;
+    const a = Math.random() * Math.PI * 2;
+    const dist = Math.max(W, H / YSCALE) / 2 + rand(120, 320);
+    G.zombies.push({ type, x: p.x + Math.cos(a) * dist, y: p.y + Math.sin(a) * dist,
+      hp: def.hp, max: def.hp, r: def.r, spd: def.spd, face: a + Math.PI, atkCd: 0, burn: 0, hitFlash: 0, wob: Math.random() * 6.3 });
+  }
+
+  // ---------- Input ----------
+  window.addEventListener("keydown", (e) => {
+    G.keys[e.key.toLowerCase()] = true;
+    if (e.key === "1" && G.player) G.player.weapon = "knife";
+    if (e.key === "2" && G.player && G.player.gun) G.player.weapon = "gun";
+    if (e.key === "Escape" && G.state === "shopping") closeShop();
+  });
+  window.addEventListener("keyup", (e) => { G.keys[e.key.toLowerCase()] = false; });
+  cv.addEventListener("mousemove", (e) => { G.mouse.sx = e.clientX; G.mouse.sy = e.clientY; });
+  cv.addEventListener("mousedown", () => { if (G.state === "playing") { G.mouse.down = true; fireOnce(); } });
+  window.addEventListener("mouseup", () => { G.mouse.down = false; });
+
+  // ----- Touch (mobile) -----
+  function showStick(id, bx, by, kx, ky) {
+    const s = $(id); s.style.display = "block";
+    s.querySelector(".stickBase").style.left = bx + "px"; s.querySelector(".stickBase").style.top = by + "px";
+    s.querySelector(".stickKnob").style.left = kx + "px"; s.querySelector(".stickKnob").style.top = ky + "px";
+  }
+  function hideStick(id) { $(id).style.display = "none"; }
+  function clearSticks() { G.move.id = null; G.move.mag = 0; G.aim.id = null; G.aim.active = false; hideStick("moveStick"); hideStick("aimStick"); }
+  const MAXR = 58;
+  function aimAngle(dx, dy) { return Math.atan2(dy / YSCALE, dx); } // unscale y for 2.5D tilt
   cv.addEventListener("touchstart", (e) => {
-    if (!G.running) return;
-    if (input.active) return;
-    const t = e.changedTouches[0];
-    startDrag(t.clientX, t.clientY, t.identifier);
+    if (G.state !== "playing") return;
+    for (const t of e.changedTouches) {
+      if (t.clientX < W / 2 && G.move.id === null) {
+        G.move.id = t.identifier; G.move.sx = t.clientX; G.move.sy = t.clientY; G.move.dx = 0; G.move.dy = 0; G.move.mag = 0;
+        showStick("moveStick", t.clientX, t.clientY, t.clientX, t.clientY);
+      } else if (t.clientX >= W / 2 && G.aim.id === null) {
+        G.aim.id = t.identifier; G.aim.sx = t.clientX; G.aim.sy = t.clientY; G.aim.active = true;
+        showStick("aimStick", t.clientX, t.clientY, t.clientX, t.clientY);
+      }
+    }
     e.preventDefault();
   }, { passive: false });
   cv.addEventListener("touchmove", (e) => {
-    if (!input.active) return;
     for (const t of e.changedTouches) {
-      if (t.identifier === input.id) { moveDrag(t.clientX, t.clientY); break; }
+      if (t.identifier === G.move.id) {
+        let dx = t.clientX - G.move.sx, dy = t.clientY - G.move.sy;
+        const d = Math.hypot(dx, dy); if (d > MAXR) { dx = dx / d * MAXR; dy = dy / d * MAXR; }
+        G.move.dx = dx / MAXR; G.move.dy = dy / MAXR; G.move.mag = Math.min(1, d / MAXR);
+        showStick("moveStick", G.move.sx, G.move.sy, G.move.sx + dx, G.move.sy + dy);
+      } else if (t.identifier === G.aim.id) {
+        let dx = t.clientX - G.aim.sx, dy = t.clientY - G.aim.sy;
+        const d = Math.hypot(dx, dy);
+        if (d > 8) G.aim.ang = aimAngle(dx, dy);
+        let kx = dx, ky = dy; if (d > MAXR) { kx = dx / d * MAXR; ky = dy / d * MAXR; }
+        showStick("aimStick", G.aim.sx, G.aim.sy, G.aim.sx + kx, G.aim.sy + ky);
+      }
     }
     e.preventDefault();
   }, { passive: false });
-  cv.addEventListener("touchend", (e) => {
+  function endTouch(e) {
     for (const t of e.changedTouches) {
-      if (t.identifier === input.id) { endDrag(); break; }
-    }
-    e.preventDefault();
-  }, { passive: false });
-  cv.addEventListener("touchcancel", () => endDrag());
-
-  // Mouse fallback (desktop testing)
-  cv.addEventListener("mousedown", (e) => { if (G.running) startDrag(e.clientX, e.clientY, "m"); });
-  window.addEventListener("mousemove", (e) => { if (input.active) moveDrag(e.clientX, e.clientY); });
-  window.addEventListener("mouseup", () => { if (input.active && input.id === "m") endDrag(); });
-
-  // ---- Spawning ----
-  function spawnMonster() {
-    const a = Math.random() * Math.PI * 2;
-    const dist = 700 + Math.random() * 400;
-    const hp = 2 + Math.floor(G.t / 90); // tougher over time
-    G.monsters.push({
-      x: G.fireX + Math.cos(a) * dist,
-      y: G.fireY + Math.sin(a) * dist,
-      r: 14 + Math.random() * 6,
-      spd: 55 + Math.random() * 45 + G.t * 0.08,
-      hp, maxhp: hp,
-      wob: Math.random() * 6.28,
-      hit: 0,
-    });
-  }
-  function spawnLog() {
-    const a = Math.random() * Math.PI * 2;
-    const dist = 260 + Math.random() * 520;
-    G.logs.push({ x: G.fireX + Math.cos(a) * dist, y: G.fireY + Math.sin(a) * dist, r: 13, bob: Math.random() * 6.28 });
-  }
-
-  function reset() {
-    G.t = 0; G.fire = 100; G.hp = 100; G.wood = 0;
-    G.player.x = 0; G.player.y = 90; G.player.ang = -Math.PI / 2;
-    G.monsters.length = 0; G.logs.length = 0; G.parts.length = 0;
-    G.spawnTimer = 2; G.woodTimer = 0; G.kills = 0; G.woodBurned = 0; G.shake = 0;
-    for (let i = 0; i < 5; i++) spawnLog();
-  }
-
-  // ---- Particles ----
-  function ember(x, y, n, col) {
-    for (let i = 0; i < n; i++) {
-      const a = Math.random() * Math.PI * 2, s = 20 + Math.random() * 80;
-      G.parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 20, life: 0.5 + Math.random() * 0.5, max: 1, col: col || "#ffae42", r: 1 + Math.random() * 2.5 });
+      if (t.identifier === G.move.id) { G.move.id = null; G.move.mag = 0; hideStick("moveStick"); }
+      else if (t.identifier === G.aim.id) { G.aim.id = null; G.aim.active = false; hideStick("aimStick"); }
     }
   }
+  cv.addEventListener("touchend", endTouch);
+  cv.addEventListener("touchcancel", endTouch);
 
-  // ---- Update ----
+  // weapon buttons + shop button
+  $("btnKnife").addEventListener("click", () => { if (G.player) { G.player.weapon = "knife"; syncWeaponBtns(); } });
+  $("btnGun").addEventListener("click", () => { if (G.player && G.player.gun) { G.player.weapon = "gun"; syncWeaponBtns(); } });
+  $("shopHint").addEventListener("click", () => { if (G.state === "playing") openShop(); });
+  function syncWeaponBtns() {
+    if (!G.player) return;
+    $("btnKnife").classList.toggle("active", G.player.weapon === "knife");
+    $("btnGun").classList.toggle("active", G.player.weapon === "gun");
+  }
+  function mouseWorld() {
+    // invert projection: x direct, y divided by YSCALE
+    return { x: G.mouse.sx + camX, y: camY + G.mouse.sy / YSCALE };
+  }
+
+  // ---------- Shop ----------
+  function openShop() {
+    if (G.state !== "playing") return;
+    G.state = "shopping"; G.mouse.down = false;
+    $("shopMoney").textContent = "보유 금액: " + G.money + "원";
+    const list = $("shopList"); list.innerHTML = "";
+    for (const g of GUNS) {
+      const owned = G.player.gun === g.id;
+      const can = G.money >= g.price && !owned;
+      const row = document.createElement("div");
+      row.className = "gun" + (owned ? " owned" : "");
+      row.innerHTML = `<div class="ginfo"><div class="gname">${g.name} <span style="color:#ffd76b">${g.price}원</span></div>
+        <div class="gstat">${gunStatLine(g)}</div></div>`;
+      const btn = document.createElement("button");
+      btn.className = "gbuy"; btn.textContent = owned ? "보유중" : "구매"; btn.disabled = !can;
+      btn.onclick = () => buyGun(g.id);
+      row.appendChild(btn); list.appendChild(row);
+    }
+    $("shop").hidden = false;
+  }
+  function buyGun(id) {
+    const g = GUN_BY_ID[id];
+    if (G.money < g.price || G.player.gun === id) return;
+    G.money -= g.price; G.player.gun = id; G.player.weapon = "gun";
+    G.player.ammo = g.mag === Infinity ? Infinity : g.mag;
+    G.player.reloading = 0; G.player.fireCd = 0;
+    openShop();
+  }
+  function closeShop() { if (G.state === "shopping") { G.state = "playing"; $("shop").hidden = true; } }
+  $("shopClose").onclick = closeShop;
+
+  // ---------- Firing ----------
+  function startReload() {
+    const g = GUN_BY_ID[G.player.gun];
+    if (!g || g.reload <= 0 || g.mag === Infinity || G.player.reloading > 0) return;
+    G.player.reloading = g.reload;
+  }
+  function getAimAngle() {
+    const p = G.player;
+    if (G.aim.active) return G.aim.ang;
+    const mw = mouseWorld();
+    return Math.atan2(mw.y - p.y, mw.x - p.x);
+  }
+  function fireOnce() {
+    const p = G.player;
+    if (p.weapon === "knife") { swingKnife(); return; }
+    const g = GUN_BY_ID[p.gun]; if (!g || g.auto) return;
+    shoot(g);
+  }
+  function shoot(g) {
+    const p = G.player;
+    if (p.reloading > 0 || p.fireCd > 0) return;
+    if (g.mag !== Infinity && p.ammo <= 0) { startReload(); return; }
+    const ang = getAimAngle(); p.ang = ang;
+    if (g.flame) spawnFlame(ang, g);
+    else if (g.pellets) { for (let i = 0; i < g.pellets; i++) spawnBullet(ang + rand(-0.22, 0.22), g.dmg, g); }
+    else spawnBullet(ang, g.dmg, g);
+    p.fireCd = g.delay;
+    if (g.mag !== Infinity) { p.ammo--; if (p.ammo <= 0) startReload(); }
+    G.parts.push({ x: p.x + Math.cos(ang) * 22, y: p.y + Math.sin(ang) * 22, vx: 0, vy: 0, life: 0.06, max: 0.06, r: 7, col: "#fff3b0", h: BULLET_H });
+  }
+  function spawnBullet(ang, dmg, g) {
+    const p = G.player;
+    G.bullets.push({ x: p.x + Math.cos(ang) * 22, y: p.y + Math.sin(ang) * 22,
+      vx: Math.cos(ang) * CFG.bulletSpeed, vy: Math.sin(ang) * CFG.bulletSpeed,
+      dmg, life: 1.1, pierce: !!g.pierce, hit: g.pierce ? [] : null, big: g.id === "sniper" || g.id === "minigun" });
+  }
+  function spawnFlame(ang, g) {
+    const p = G.player;
+    for (const z of G.zombies) {
+      const dx = z.x - p.x, dy = z.y - p.y, d = Math.hypot(dx, dy);
+      if (d < CFG.flameRange + z.r) {
+        const za = Math.atan2(dy, dx);
+        let diff = Math.abs(((za - ang + Math.PI) % (2 * Math.PI)) - Math.PI);
+        if (diff < 0.5) { z.hp -= g.dmg * (1 / 60); z.burn = Math.max(z.burn, 3.0); z.hitFlash = 0.05; }
+      }
+    }
+    for (let i = 0; i < 3; i++) {
+      const a = ang + rand(-0.4, 0.4), sp = rand(180, 320);
+      G.parts.push({ x: p.x + Math.cos(ang) * 20, y: p.y + Math.sin(ang) * 20, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        life: rand(0.2, 0.4), max: 0.4, r: rand(5, 11), col: Math.random() < 0.5 ? "#ff8a2a" : "#ffd24a", h: 18 });
+    }
+  }
+  function swingKnife() {
+    const p = G.player;
+    if (p.knifeCd > 0) return;
+    p.knifeCd = CFG.knifeDelay;
+    const ang = getAimAngle(); p.ang = ang; p.swing = 0.18;
+    for (const z of G.zombies) {
+      const dx = z.x - p.x, dy = z.y - p.y, d = Math.hypot(dx, dy);
+      if (d < CFG.knifeRange + z.r) {
+        const za = Math.atan2(dy, dx);
+        let diff = Math.abs(((za - ang + Math.PI) % (2 * Math.PI)) - Math.PI);
+        if (diff < CFG.knifeArc / 2) {
+          const dot = Math.cos(z.face) * (p.x - z.x) + Math.sin(z.face) * (p.y - z.y);
+          damageZombie(z, dot > 0 ? CFG.knifeBackstab : CFG.knifeDmg);
+        }
+      }
+    }
+  }
+  function damageZombie(z, dmg) {
+    z.hp -= dmg; z.hitFlash = 0.08;
+    G.pops.push({ x: z.x, y: z.y, h: z.r + 16, t: 0.6, txt: Math.round(dmg), col: "#fff" });
+  }
+  function killZombie(z, idx) {
+    const def = ZT[z.type];
+    G.money += def.reward; G.killCount++;
+    if (def.reward > 0) G.pops.push({ x: z.x, y: z.y, h: 18, t: 0.9, txt: "+" + def.reward + "원", col: "#ffd76b" });
+    for (let i = 0; i < 12; i++) { const a = Math.random() * 6.3, s = rand(40, 160);
+      G.parts.push({ x: z.x, y: z.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.3, 0.6), max: 0.6, r: rand(2, 4), col: def.color, h: 14 }); }
+    if (def.explode) explode(z.x, z.y, 90, 10);
+    if (def.poison) G.pools.push({ x: z.x, y: z.y, r: 60, t: 5, dps: 10 });
+    if (def.split) for (let i = 0; i < 2; i++) { const a = Math.random() * 6.3;
+      G.zombies.push({ type: "splitling", x: z.x + Math.cos(a) * 20, y: z.y + Math.sin(a) * 20,
+        hp: ZT.splitling.hp, max: ZT.splitling.hp, r: ZT.splitling.r, spd: ZT.splitling.spd, face: a, atkCd: 0, burn: 0, hitFlash: 0, wob: Math.random() * 6.3 }); }
+    G.zombies.splice(idx, 1);
+  }
+  function explode(x, y, radius, dmg) {
+    for (let i = 0; i < 22; i++) { const a = Math.random() * 6.3, s = rand(60, 240);
+      G.parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.3, 0.7), max: 0.7, r: rand(3, 7), col: i % 2 ? "#ff8a2a" : "#ffd24a", h: 18 }); }
+    const p = G.player;
+    if (Math.hypot(p.x - x, p.y - y) < radius + p.r) hurtPlayer(dmg);
+  }
+  function hurtPlayer(dmg) {
+    G.player.hp -= dmg; G.player.hurtFlash = 0.25;
+    if (G.player.hp <= 0) { G.player.hp = 0; die("좀비에게 당했다…"); }
+  }
+
+  // ---------- Loop ----------
   let last = 0;
   function frame(ts) {
     if (!last) last = ts;
     let dt = (ts - last) / 1000; last = ts;
     if (dt > 0.05) dt = 0.05;
-    if (G.running) update(dt);
+    if (G.state === "playing") update(dt);
+    else if (G.state === "shopping") checkShopHover();
     render();
     requestAnimationFrame(frame);
   }
 
   function update(dt) {
-    G.t += dt;
-    if (G.t >= G.night) { return endGame(true); }
-
-    // Player move
     const p = G.player;
-    if (input.mag > 0.05) {
-      p.x += input.dx * SPEED * dt;
-      p.y += input.dy * SPEED * dt;
-      p.ang = Math.atan2(input.dy, input.dx);
-      // clamp to world
-      p.x = Math.max(-WORLD, Math.min(WORLD, p.x));
-      p.y = Math.max(-WORLD, Math.min(WORLD, p.y));
+    let mx = 0, my = 0;
+    if (G.keys["w"] || G.keys["arrowup"]) my -= 1;
+    if (G.keys["s"] || G.keys["arrowdown"]) my += 1;
+    if (G.keys["a"] || G.keys["arrowleft"]) mx -= 1;
+    if (G.keys["d"] || G.keys["arrowright"]) mx += 1;
+    if (G.move.mag > 0.1) { mx = G.move.dx; my = G.move.dy / YSCALE; } // touch stick (unscale y for tilt)
+    let spd = CFG.playerSpeed;
+    if (p.weapon === "gun" && p.gun && GUN_BY_ID[p.gun].slow) spd *= 0.55;
+    if (mx || my) { const m = Math.hypot(mx, my); p.x += mx / m * spd * dt; p.y += my / m * spd * dt; }
+    resolve(p, p.r);
+
+    // aim: touch stick takes priority, else mouse
+    if (G.aim.active) p.ang = G.aim.ang;
+    else { const mw = mouseWorld(); p.ang = Math.atan2(mw.y - p.y, mw.x - p.x); }
+    // auto-fire while aim stick held (mobile)
+    if (G.aim.active) {
+      if (p.weapon === "knife") swingKnife();
+      else if (p.gun) shoot(GUN_BY_ID[p.gun]);
     }
 
-    // Fire fuel drains; faster as night deepens
-    const drain = 2.4 + G.t / 220;
-    G.fire = Math.max(0, G.fire - drain * dt);
+    if (p.fireCd > 0) p.fireCd -= dt;
+    if (p.knifeCd > 0) p.knifeCd -= dt;
+    if (p.swing > 0) p.swing -= dt;
+    if (p.hurtFlash > 0) p.hurtFlash -= dt;
+    if (p.reloading > 0) { p.reloading -= dt; if (p.reloading <= 0) { p.reloading = 0; const g = GUN_BY_ID[p.gun]; if (g && g.mag !== Infinity) p.ammo = g.mag; } }
+    if (G.mouse.down && p.weapon === "gun" && p.gun) { const g = GUN_BY_ID[p.gun]; if (g.auto) shoot(g); }
 
-    // Stand near fire to feed wood into it
-    const fdist = Math.hypot(p.x - G.fireX, p.y - G.fireY);
-    if (fdist < G.fireR + 60 && G.wood > 0) {
-      // feed 1 wood per ~0.35s
-      G._feed = (G._feed || 0) + dt;
-      if (G._feed > 0.3) {
-        G._feed = 0;
-        G.wood--; G.woodBurned++;
-        G.fire = Math.min(100, G.fire + 14);
-        ember(G.fireX, G.fireY, 14, "#ffd24a");
-        G.shake = Math.min(G.shake, 0);
+    const c = G.campfire;
+    const nearFire = Math.hypot(p.x - c.x, p.y - c.y) < c.r;
+    if (nearFire) { p.temp = Math.min(100, p.temp + CFG.regenTemp * dt); p.hp = Math.min(100, p.hp + CFG.regenHp * dt); }
+    else p.temp -= CFG.tempDrain * dt;
+    if (p.temp <= 0) { p.temp = 0; return die("온도가 0이 되어 얼어붙었다…"); }
+
+    G.timer -= dt;
+    if (G.phase === "day" && G.timer <= 0) beginNight();
+    else if (G.phase === "night" && G.timer <= 0) { G.phase = "morning"; G.fleeT = 2.2; for (const z of G.zombies) z.flee = true; }
+    if (G.phase === "morning") {
+      G.fleeT -= dt;
+      if (G.fleeT <= 0) { G.zombies = []; G.day++; G.phase = "day"; G.timer = CFG.dayBase + (G.day - 1) * CFG.dayInc; }
+    }
+
+    if (G.phase === "night" && G.spawnQueue.length) {
+      G.spawnTimer -= dt;
+      if (G.spawnTimer <= 0) { spawnZombie(G.spawnQueue.shift()); G.spawnTimer = Math.max(0.25, (CFG.night * 0.7) / Math.max(1, (6 + G.day * 3))); }
+    }
+
+    for (let i = G.zombies.length - 1; i >= 0; i--) {
+      const z = G.zombies[i], def = ZT[z.type];
+      z.wob += dt * 5;
+      if (z.hitFlash > 0) z.hitFlash -= dt;
+      if (z.burn > 0) { z.burn -= dt; z.hp -= 100 * dt; }
+      let tx, ty;
+      if (z.flee) { tx = z.x + (z.x - p.x); ty = z.y + (z.y - p.y); } else { tx = p.x; ty = p.y; }
+      let dx = tx - z.x, dy = ty - z.y; const d = Math.hypot(dx, dy) || 1; dx /= d; dy /= d;
+      const sp = z.flee ? z.spd * 2.4 : z.spd;
+      z.face = Math.atan2(p.y - z.y, p.x - z.x);
+      z.x += dx * sp * dt; z.y += dy * sp * dt;
+      if (!z.flee) resolve(z, z.r);
+      if (z.atkCd > 0) z.atkCd -= dt;
+      if (!z.flee && Math.hypot(p.x - z.x, p.y - z.y) < p.r + z.r) {
+        if (def.explode) { explode(z.x, z.y, 90, def.dmgHp); G.zombies.splice(i, 1); continue; }
+        if (z.atkCd <= 0) {
+          z.atkCd = 0.7;
+          if (def.dmgTemp) { p.temp -= def.dmgTemp; if (p.temp <= 0) { p.temp = 0; die("얼음좀비에게 얼어붙었다…"); } }
+          if (def.dmgHp) hurtPlayer(def.dmgHp);
+        }
       }
+      if (z.hp <= 0) { killZombie(z, i); continue; }
     }
 
-    // Bright radius depends on fuel
-    const bright = G.fireR + SAFE_PAD * (0.35 + 0.65 * (G.fire / 100));
+    for (let i = G.pools.length - 1; i >= 0; i--) {
+      const pl = G.pools[i]; pl.t -= dt;
+      if (pl.t <= 0) { G.pools.splice(i, 1); continue; }
+      if (Math.hypot(p.x - pl.x, p.y - pl.y) < pl.r + p.r) { p.hp -= pl.dps * dt; if (p.hp <= 0) { p.hp = 0; return die("독에 중독되어 쓰러졌다…"); } }
+    }
 
-    // Pick up logs
-    for (let i = G.logs.length - 1; i >= 0; i--) {
-      const l = G.logs[i];
-      l.bob += dt * 3;
-      if (Math.hypot(p.x - l.x, p.y - l.y) < p.r + l.r + 6) {
-        G.logs.splice(i, 1);
-        G.wood++;
-        ember(l.x, l.y, 8, "#caa46a");
+    for (let i = G.bullets.length - 1; i >= 0; i--) {
+      const b = G.bullets[i];
+      b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
+      let dead = b.life <= 0;
+      if (!dead) for (const wl of G.walls) if (b.x > wl.x && b.x < wl.x + wl.w && b.y > wl.y && b.y < wl.y + wl.h) { dead = true; break; }
+      if (!dead) for (let j = G.zombies.length - 1; j >= 0; j--) {
+        const z = G.zombies[j];
+        if (Math.hypot(b.x - z.x, b.y - z.y) < z.r + 4) {
+          if (b.pierce) { if (b.hit.indexOf(z) >= 0) continue; b.hit.push(z); }
+          damageZombie(z, b.dmg);
+          if (z.hp <= 0) killZombie(z, j);
+          if (!b.pierce) { dead = true; break; }
+        }
       }
+      if (dead) G.bullets.splice(i, 1);
     }
 
-    // Spawn logs over time (keep some available)
-    G.woodTimer -= dt;
-    if (G.woodTimer <= 0 && G.logs.length < 8) {
-      G.woodTimer = 2.2;
-      spawnLog();
-    }
-
-    // Spawn monsters; rate increases through the night
-    G.spawnTimer -= dt;
-    const rate = Math.max(0.5, 2.6 - G.t / 130);
-    if (G.spawnTimer <= 0) {
-      G.spawnTimer = rate;
-      spawnMonster();
-      if (G.t > 240) spawnMonster();
-    }
-
-    // Monsters
-    let damaging = false;
-    for (let i = G.monsters.length - 1; i >= 0; i--) {
-      const m = G.monsters[i];
-      m.wob += dt * 4;
-      const tx = p.x, ty = p.y; // chase player
-      let dx = tx - m.x, dy = ty - m.y;
-      const d = Math.hypot(dx, dy) || 1;
-      dx /= d; dy /= d;
-
-      // Repelled by bright fire zone: if monster inside bright radius, push out
-      const mfd = Math.hypot(m.x - G.fireX, m.y - G.fireY);
-      const inLight = mfd < bright;
-      if (inLight && G.fire > 5) {
-        // push away from fire, take burn damage
-        const ox = (m.x - G.fireX) / (mfd || 1), oy = (m.y - G.fireY) / (mfd || 1);
-        m.x += ox * 60 * dt; m.y += oy * 60 * dt;
-        m.hp -= dt * 3;
-        if (Math.random() < 0.3) ember(m.x, m.y, 1, "#ff7a2a");
-        if (m.hp <= 0) { killMonster(i); continue; }
-      } else {
-        const wob = Math.sin(m.wob) * 0.4;
-        m.x += (dx + Math.cos(m.wob) * 0.18) * m.spd * dt;
-        m.y += (dy + Math.sin(m.wob) * 0.18) * m.spd * dt;
-      }
-      if (m.hit > 0) m.hit -= dt;
-
-      // Hit player
-      if (Math.hypot(p.x - m.x, p.y - m.y) < p.r + m.r) {
-        damaging = true;
-      }
-    }
-    if (damaging) {
-      G.hp -= 22 * dt;
-      G.shake = Math.min(14, G.shake + 40 * dt);
-      if (G.hp <= 0) { G.hp = 0; return endGame(false); }
-    }
-
-    // When fire is dead, things get scary fast (drain hp slightly from dread? no—monsters do it)
-    G.shake = Math.max(0, G.shake - dt * 30);
-
-    // Particles
     for (let i = G.parts.length - 1; i >= 0; i--) {
-      const q = G.parts[i];
-      q.life -= dt;
+      const q = G.parts[i]; q.life -= dt;
       if (q.life <= 0) { G.parts.splice(i, 1); continue; }
-      q.x += q.vx * dt; q.y += q.vy * dt; q.vy += 30 * dt;
+      q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.94; q.vy *= 0.94;
     }
+    for (let i = G.pops.length - 1; i >= 0; i--) { const q = G.pops[i]; q.t -= dt; q.h += 26 * dt; if (q.t <= 0) G.pops.splice(i, 1); }
 
-    updateHUD(bright);
+    checkShopHover();
+    updateHUD();
   }
 
-  function killMonster(i) {
-    const m = G.monsters[i];
-    ember(m.x, m.y, 12, "#7a5cff");
-    G.monsters.splice(i, 1);
-    G.kills++;
+  function checkShopHover() {
+    const s = G.seller; if (!s || !G.player) return;
+    const sx = px(s.x), sy = py(s.y, 36);
+    const near = Math.hypot(G.player.x - s.x, G.player.y - s.y) < 180;
+    const hover = Math.hypot(G.mouse.sx - sx, G.mouse.sy - sy) < 44;
+    $("shopHint").style.display = (near && G.state === "playing") ? "block" : "none";
+    if (near && hover && !G._hoverPrev && G.state === "playing") openShop();
+    G._hoverPrev = near && hover;
   }
 
-  function updateHUD(bright) {
-    fireFill.style.width = G.fire + "%";
-    hpFill.style.width = G.hp + "%";
-    woodCount.textContent = G.wood;
-    // Clock: 21:00 -> 06:00 across the night (9 hours)
-    const frac = G.t / G.night;
-    const totalMin = 21 * 60 + frac * 9 * 60;
-    let hh = Math.floor(totalMin / 60) % 24;
-    let mm = Math.floor(totalMin % 60);
-    clockTime.textContent = String(hh).padStart(2, "0") + ":" + String(mm).padStart(2, "0");
-    let label = "밤이 깊어간다";
-    if (frac > 0.85) label = "곧 동이 튼다…";
-    else if (frac > 0.6) label = "가장 어두운 시간";
-    else if (frac < 0.15) label = "밤이 시작됐다";
-    if (G.fire < 20) label = "🔥 불이 꺼져간다!";
-    wave.textContent = label;
+  function updateHUD() {
+    const p = G.player;
+    $("tempFill").style.width = p.temp + "%"; $("tempVal").textContent = Math.ceil(p.temp) + "%";
+    $("hpFill").style.width = p.hp + "%"; $("hpVal").textContent = Math.ceil(p.hp);
+    $("money").textContent = G.money + "원";
+    $("dayText").textContent = G.day + "일차";
+    const t = Math.max(0, G.timer), mm = Math.floor(t / 60), ss = Math.floor(t % 60);
+    $("timeText").textContent = mm + ":" + String(ss).padStart(2, "0");
+    let ph = "☀️ 낮 — 좀비를 대비해라";
+    if (G.phase === "night") ph = "🌙 밤 — 좀비 출현!";
+    else if (G.phase === "morning") ph = "🌅 아침 — 좀비가 도망친다";
+    $("phaseText").textContent = ph;
+    if (p.weapon === "knife") { $("wName").textContent = "🔪 칼"; $("wAmmo").textContent = "근접 무기 (데미지 5 / 백스탭 10)"; }
+    else {
+      const g = GUN_BY_ID[p.gun]; $("wName").textContent = "🔫 " + g.name;
+      if (p.reloading > 0) $("wAmmo").textContent = "재장전… " + p.reloading.toFixed(1) + "s";
+      else if (g.mag === Infinity) $("wAmmo").textContent = "탄약 ∞";
+      else $("wAmmo").textContent = "탄약 " + p.ammo + " / " + g.mag;
+    }
+    syncWeaponBtns();
   }
 
-  // ---- Render ----
+  // ================= RENDER (2.5D) =================
   function render() {
     ctx.clearRect(0, 0, W, H);
-    // camera centered on player
+    if (G.state === "title" || !G.player) { ctx.fillStyle = "#0a0d14"; ctx.fillRect(0, 0, W, H); return; }
     const p = G.player;
-    let camx = p.x, camy = p.y;
-    let sx = (Math.random() - 0.5) * G.shake, sy = (Math.random() - 0.5) * G.shake;
-    const cx = W / 2 - camx + sx, cy = H / 2 - camy + sy;
+    camX = p.x - W / 2;
+    camY = p.y - (H / 2) / YSCALE;
+    const isNight = G.phase === "night";
 
-    // base ground
-    const dark = G.running ? darkness() : 1;
-    ctx.fillStyle = "#06060e";
+    // sky/ground base
+    ctx.fillStyle = isNight ? "#070a12" : "#202b40";
     ctx.fillRect(0, 0, W, H);
 
-    // ground texture (subtle grid of dots) only near visible
-    ctx.save();
-    ctx.translate(cx, cy);
+    // ground grid (flat z=0)
+    const wxMin = camX, wxMax = camX + W, wyMin = camY, wyMax = camY + H / YSCALE;
+    const step = 64;
+    ctx.fillStyle = isNight ? "rgba(120,140,180,0.05)" : "rgba(255,255,255,0.05)";
+    for (let x = Math.floor(wxMin / step) * step; x < wxMax + step; x += step)
+      for (let y = Math.floor(wyMin / step) * step; y < wyMax + step; y += step)
+        ctx.fillRect(px(x), py(y, 0), 2, 2 * YSCALE);
 
-    drawGround();
+    // world border (ground)
+    ctx.strokeStyle = "rgba(120,140,200,0.25)"; ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(px(-WORLD), py(-WORLD, 0)); ctx.lineTo(px(WORLD), py(-WORLD, 0));
+    ctx.lineTo(px(WORLD), py(WORLD, 0)); ctx.lineTo(px(-WORLD), py(WORLD, 0)); ctx.closePath(); ctx.stroke();
 
-    if (G.running) {
-      // logs
-      for (const l of G.logs) drawLog(l);
-      // fire
-      drawFire();
-      // monsters
-      for (const m of G.monsters) drawMonster(m);
-      // player
-      drawPlayer(p);
-      // particles
-      for (const q of G.parts) {
-        ctx.globalAlpha = Math.max(0, q.life / q.max);
-        ctx.fillStyle = q.col;
-        ctx.beginPath(); ctx.arc(q.x, q.y, q.r, 0, 6.283); ctx.fill();
-      }
+    // house floors
+    for (const ho of G.houses) {
+      ctx.fillStyle = ho.hasCampfire ? "rgba(80,55,38,0.85)" : "rgba(36,52,74,0.85)";
+      quad(px(ho.x), py(ho.y, 0), px(ho.x + ho.w), py(ho.y, 0), px(ho.x + ho.w), py(ho.y + ho.h, 0), px(ho.x), py(ho.y + ho.h, 0));
+    }
+    // poison pools (ground)
+    for (const pl of G.pools) {
+      ctx.globalAlpha = Math.min(1, pl.t / 2) * 0.5; ctx.fillStyle = "#6abf2a";
+      ctx.beginPath(); ctx.ellipse(px(pl.x), py(pl.y, 0), pl.r, pl.r * YSCALE, 0, 0, 6.3); ctx.fill();
       ctx.globalAlpha = 1;
     }
-    ctx.restore();
+    // campfire light ring on ground
+    const c = G.campfire;
+    ctx.strokeStyle = "rgba(255,170,80,0.22)"; ctx.setLineDash([10, 8]); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(px(c.x), py(c.y, 0), c.r, c.r * YSCALE, 0, 0, 6.3); ctx.stroke(); ctx.setLineDash([]);
 
-    // Darkness overlay with light holes (fire + player flashlight)
-    if (G.running) drawDarkness(cx, cy);
-  }
+    // ground shadows for actors (drawn before tall objects)
+    drawShadow(p.x, p.y, p.r);
+    for (const z of G.zombies) drawShadow(z.x, z.y, z.r);
+    drawShadow(c.x, c.y, 22);
+    if (G.seller) drawShadow(G.seller.x, G.seller.y, 14);
 
-  function drawGround() {
-    // draw faint dots within camera range
-    const p = G.player;
-    const step = 80;
-    const minx = Math.floor((p.x - W) / step) * step;
-    const maxx = Math.ceil((p.x + W) / step) * step;
-    const miny = Math.floor((p.y - H) / step) * step;
-    const maxy = Math.ceil((p.y + H) / step) * step;
-    ctx.fillStyle = "rgba(120,120,160,0.06)";
-    for (let x = minx; x <= maxx; x += step) {
-      for (let y = miny; y <= maxy; y += step) {
-        ctx.beginPath(); ctx.arc(x, y, 1.5, 0, 6.283); ctx.fill();
-      }
+    // ---- depth-sorted tall objects ----
+    const items = [];
+    for (const wl of G.walls) items.push({ k: "wall", o: wl, sy: wl.y + wl.h });
+    for (const z of G.zombies) items.push({ k: "zombie", o: z, sy: z.y });
+    items.push({ k: "campfire", o: c, sy: c.y });
+    if (G.seller) items.push({ k: "seller", o: G.seller, sy: G.seller.y });
+    items.push({ k: "player", o: p, sy: p.y });
+    items.sort((a, b) => a.sy - b.sy);
+    for (const it of items) {
+      if (it.k === "wall") drawWall(it.o);
+      else if (it.k === "zombie") drawZombie(it.o);
+      else if (it.k === "campfire") drawCampfire(it.o);
+      else if (it.k === "seller") drawSeller(it.o);
+      else if (it.k === "player") drawPlayer(it.o);
     }
-    // world border
-    ctx.strokeStyle = "rgba(120,80,200,0.15)";
-    ctx.lineWidth = 4;
-    ctx.strokeRect(-WORLD, -WORLD, WORLD * 2, WORLD * 2);
+
+    // bullets (flying)
+    for (const b of G.bullets) {
+      ctx.fillStyle = b.big ? "#9fe8ff" : "#ffe27a";
+      ctx.beginPath(); ctx.arc(px(b.x), py(b.y, BULLET_H), b.big ? 5 : 3.2, 0, 6.3); ctx.fill();
+    }
+    // particles
+    for (const q of G.parts) {
+      ctx.globalAlpha = Math.max(0, q.life / q.max); ctx.fillStyle = q.col;
+      ctx.beginPath(); ctx.arc(px(q.x), py(q.y, q.h || 12), q.r, 0, 6.3); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    // pops
+    ctx.textAlign = "center"; ctx.font = "bold 15px sans-serif";
+    for (const q of G.pops) { ctx.globalAlpha = Math.max(0, q.t); ctx.fillStyle = q.col; ctx.fillText(q.txt, px(q.x), py(q.y, q.h)); }
+    ctx.globalAlpha = 1;
+
+    if (isNight) drawDarkness();
+    if (p.hurtFlash > 0) { ctx.fillStyle = "rgba(255,40,60," + (p.hurtFlash * 0.6) + ")"; ctx.fillRect(0, 0, W, H); }
   }
 
-  function drawFire() {
+  function drawShadow(wx, wy, r) {
+    ctx.fillStyle = "rgba(0,0,0,0.32)";
+    ctx.beginPath(); ctx.ellipse(px(wx), py(wy, 0), r * 0.95, r * 0.5, 0, 0, 6.3); ctx.fill();
+  }
+
+  function drawWall(wl) {
+    const x1 = wl.x, y1 = wl.y, x2 = wl.x + wl.w, y2 = wl.y + wl.h, h = WALL_H;
+    // west face
+    ctx.fillStyle = "#262d3c"; quad(px(x1), py(y1, h), px(x1), py(y2, h), px(x1), py(y2, 0), px(x1), py(y1, 0));
+    // east face
+    ctx.fillStyle = "#202636"; quad(px(x2), py(y1, h), px(x2), py(y2, h), px(x2), py(y2, 0), px(x2), py(y1, 0));
+    // south (front) face
+    ctx.fillStyle = "#161b28"; quad(px(x1), py(y2, h), px(x2), py(y2, h), px(x2), py(y2, 0), px(x1), py(y2, 0));
+    // top face
+    ctx.fillStyle = "#46566f"; quad(px(x1), py(y1, h), px(x2), py(y1, h), px(x2), py(y2, h), px(x1), py(y2, h));
+    // top edge highlight
+    ctx.strokeStyle = "rgba(255,255,255,0.12)"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(px(x1), py(y1, h)); ctx.lineTo(px(x2), py(y1, h)); ctx.stroke();
+  }
+
+  function drawCampfire(c) {
     const t = performance.now() / 1000;
-    const f = G.fire / 100;
-    const glow = G.fireR + 30 + Math.sin(t * 8) * 4;
-    // glow
-    const g = ctx.createRadialGradient(G.fireX, G.fireY, 4, G.fireX, G.fireY, 220 * (0.4 + 0.6 * f));
-    g.addColorStop(0, "rgba(255,170,70," + (0.55 * f + 0.1) + ")");
-    g.addColorStop(0.5, "rgba(255,120,40," + (0.18 * f) + ")");
-    g.addColorStop(1, "rgba(255,120,40,0)");
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(G.fireX, G.fireY, 220 * (0.4 + 0.6 * f), 0, 6.283); ctx.fill();
-
-    // logs base
-    ctx.fillStyle = "#3a2410";
-    ctx.save(); ctx.translate(G.fireX, G.fireY);
-    ctx.rotate(0.4); ctx.fillRect(-22, -5, 44, 10);
-    ctx.rotate(-0.9); ctx.fillRect(-22, -5, 44, 10);
-    ctx.restore();
-
+    const g = ctx.createRadialGradient(px(c.x), py(c.y, 14), 4, px(c.x), py(c.y, 14), 70);
+    g.addColorStop(0, "rgba(255,180,90,0.55)"); g.addColorStop(1, "rgba(255,180,90,0)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(px(c.x), py(c.y, 14), 70, 0, 6.3); ctx.fill();
+    // logs
+    ctx.fillStyle = "#3a2410"; ctx.save(); ctx.translate(px(c.x), py(c.y, 0));
+    ctx.scale(1, YSCALE); ctx.rotate(0.4); ctx.fillRect(-20, -4, 40, 8); ctx.rotate(-0.9); ctx.fillRect(-20, -4, 40, 8); ctx.restore();
     // flames
-    if (G.fire > 1) {
-      for (let i = 0; i < 3; i++) {
-        const h = (18 + i * 6) * (0.4 + 0.6 * f) * (1 + Math.sin(t * 9 + i) * 0.12);
-        const wob = Math.sin(t * 7 + i * 2) * 5;
-        ctx.fillStyle = i === 0 ? "#ffe07a" : i === 1 ? "#ff9a32" : "#ff5a1f";
-        ctx.beginPath();
-        ctx.moveTo(G.fireX - (10 - i * 2.5) , G.fireY + 4);
-        ctx.quadraticCurveTo(G.fireX + wob, G.fireY - h, G.fireX + (10 - i * 2.5), G.fireY + 4);
-        ctx.fill();
-      }
-      if (Math.random() < 0.5 * f) ember(G.fireX + (Math.random() - 0.5) * 14, G.fireY - 6, 1, "#ffba4a");
-    } else {
-      // embers only
-      ctx.fillStyle = "#5a2a10";
-      ctx.beginPath(); ctx.arc(G.fireX, G.fireY, 8, 0, 6.283); ctx.fill();
+    for (let i = 0; i < 3; i++) {
+      const fh = 26 + i * 6 + Math.sin(t * 9 + i) * 3, wob = Math.sin(t * 7 + i * 2) * 4;
+      const bx = px(c.x), by = py(c.y, 6);
+      ctx.fillStyle = i === 0 ? "#ffe07a" : i === 1 ? "#ff9a32" : "#ff5a1f";
+      ctx.beginPath(); ctx.moveTo(bx - (9 - i * 2.4), by);
+      ctx.quadraticCurveTo(bx + wob, by - fh, bx + (9 - i * 2.4), by); ctx.fill();
     }
   }
 
-  function drawLog(l) {
-    const yo = Math.sin(l.bob) * 3;
-    ctx.save(); ctx.translate(l.x, l.y + yo);
-    // soft halo so it's findable in the gloom
-    const g = ctx.createRadialGradient(0, 0, 2, 0, 0, 34);
-    g.addColorStop(0, "rgba(210,170,110,0.5)");
-    g.addColorStop(1, "rgba(210,170,110,0)");
-    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 34, 0, 6.283); ctx.fill();
-    ctx.rotate(0.5);
-    ctx.fillStyle = "#7a5226"; ctx.fillRect(-13, -6, 26, 12);
-    ctx.fillStyle = "#9a6e38"; ctx.fillRect(-13, -6, 6, 12);
-    ctx.fillStyle = "#caa46a";
-    ctx.beginPath(); ctx.arc(11, 0, 5, 0, 6.283); ctx.fill();
-    ctx.restore();
+  function drawSeller(s) {
+    const t = performance.now() / 1000;
+    const cx = px(s.x), gy = py(s.y, 0);
+    ctx.fillStyle = "rgba(120,180,255,0.22)"; ctx.beginPath(); ctx.arc(cx, gy - 14, 24 + Math.sin(t * 3) * 3, 0, 6.3); ctx.fill();
+    sphere(cx, gy - 14, 13, "#3b6ea5");       // body
+    sphere(cx, gy - 30, 9, "#e8c79a");        // head
+    ctx.fillStyle = "#fff"; ctx.font = "16px sans-serif"; ctx.textAlign = "center"; ctx.fillText("🔫", cx, gy - 42);
   }
 
-  function drawMonster(m) {
-    const sq = 1 + Math.sin(m.wob) * 0.08;
-    ctx.save(); ctx.translate(m.x, m.y); ctx.scale(1, sq);
-    // body
-    ctx.fillStyle = m.hit > 0 ? "#ffffff" : "#241a3a";
-    ctx.beginPath(); ctx.arc(0, 0, m.r, 0, 6.283); ctx.fill();
-    ctx.strokeStyle = "rgba(140,90,230,0.6)"; ctx.lineWidth = 2; ctx.stroke();
-    // eyes
-    ctx.fillStyle = "#ff3b5c";
-    ctx.beginPath(); ctx.arc(-m.r * 0.35, -m.r * 0.15, 3, 0, 6.283); ctx.fill();
-    ctx.beginPath(); ctx.arc(m.r * 0.35, -m.r * 0.15, 3, 0, 6.283); ctx.fill();
-    ctx.restore();
-    // hp pip
-    if (m.hp < m.maxhp) {
-      ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(m.x - 12, m.y - m.r - 9, 24, 4);
-      ctx.fillStyle = "#ff4d6a"; ctx.fillRect(m.x - 12, m.y - m.r - 9, 24 * (m.hp / m.maxhp), 4);
+  function drawZombie(z) {
+    const def = ZT[z.type];
+    const cx = px(z.x), gy = py(z.y, 0), by = gy - z.r;
+    if (z.burn > 0) { ctx.fillStyle = "rgba(255,140,40,0.6)"; ctx.beginPath(); ctx.arc(cx, by, z.r + 4, 0, 6.3); ctx.fill(); }
+    sphere(cx, by, z.r, def.color, z.hitFlash > 0);
+    // eyes toward player
+    const ex = Math.cos(z.face) * z.r * 0.4, ey = Math.sin(z.face) * z.r * 0.4 * YSCALE;
+    ctx.fillStyle = def.boss ? "#ffd24a" : "#ff3b4a";
+    ctx.beginPath(); ctx.arc(cx + ex - 3, by + ey, 2.5, 0, 6.3); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + ex + 3, by + ey, 2.5, 0, 6.3); ctx.fill();
+    if (z.hp < z.max) {
+      const w = Math.max(24, z.r * 1.8);
+      ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(cx - w / 2, by - z.r - 12, w, 4);
+      ctx.fillStyle = "#ff4d6a"; ctx.fillRect(cx - w / 2, by - z.r - 12, w * (z.hp / z.max), 4);
     }
+    if (def.boss) { ctx.fillStyle = "#ffd24a"; ctx.font = "bold 12px sans-serif"; ctx.textAlign = "center"; ctx.fillText(def.name, cx, by - z.r - 18); }
   }
 
   function drawPlayer(p) {
-    ctx.save(); ctx.translate(p.x, p.y);
-    // shadow
-    ctx.fillStyle = "rgba(0,0,0,0.35)";
-    ctx.beginPath(); ctx.ellipse(0, p.r * 0.7, p.r * 0.9, p.r * 0.4, 0, 0, 6.283); ctx.fill();
+    const cx = px(p.x), gy = py(p.y, 0), by = gy - p.r;
+    // weapon arm
+    const len = p.weapon === "knife" ? (p.r + 18) : (p.r + 16);
+    let aim = p.ang;
+    if (p.weapon === "knife" && p.swing > 0) aim += (1 - p.swing / 0.18) * 0.8 - 0.4;
+    const ex = cx + Math.cos(aim) * len, ey = by + Math.sin(aim) * len * YSCALE;
+    ctx.strokeStyle = p.weapon === "knife" ? "#cfd6e0" : "#2a2f3a";
+    ctx.lineWidth = p.weapon === "knife" ? 4 : 7; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(cx, by); ctx.lineTo(ex, ey); ctx.stroke();
     // body
-    ctx.rotate(p.ang + Math.PI / 2);
-    ctx.fillStyle = "#ffd98a";
-    ctx.beginPath(); ctx.arc(0, 0, p.r, 0, 6.283); ctx.fill();
+    sphere(cx, by, p.r, p.hurtFlash > 0 ? "#ffb0b0" : "#ffd98a");
+    // eyes toward aim
+    const fx = Math.cos(p.ang) * p.r * 0.45, fy = Math.sin(p.ang) * p.r * 0.45 * YSCALE;
     ctx.fillStyle = "#1a1020";
-    ctx.beginPath(); ctx.arc(-5, -4, 2.4, 0, 6.283); ctx.fill();
-    ctx.beginPath(); ctx.arc(5, -4, 2.4, 0, 6.283); ctx.fill();
-    // little torch carried (points forward)
-    ctx.fillStyle = "#7a5226"; ctx.fillRect(-2, -p.r - 10, 4, 12);
-    ctx.fillStyle = "#ffb347";
-    ctx.beginPath(); ctx.arc(0, -p.r - 12, 5, 0, 6.283); ctx.fill();
-    ctx.restore();
+    ctx.beginPath(); ctx.arc(cx + fx - 3, by + fy, 2.3, 0, 6.3); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + fx + 3, by + fy, 2.3, 0, 6.3); ctx.fill();
   }
 
-  function darkness() { return 1; }
-
-  // Dark overlay: fill screen dark, then "cut" light circles using destination-out
-  function drawDarkness(cx, cy) {
-    const p = G.player;
-    const f = G.fire / 100;
-    // screen-space positions
-    const fsx = G.fireX + cx, fsy = G.fireY + cy;
-    const psx = p.x + cx, psy = p.y + cy;
-
+  function drawDarkness() {
+    const p = G.player, c = G.campfire;
+    const psx = px(p.x), psy = py(p.y, 0) - p.r, fsx = px(c.x), fsy = py(c.y, 0) - 6;
     ctx.save();
-    // overall night veil
-    let veil = 0.93 - 0.05 * f;
-    ctx.fillStyle = "rgba(2,2,8," + veil + ")";
-    ctx.fillRect(0, 0, W, H);
-
-    // cut light using destination-out gradients
+    ctx.fillStyle = "rgba(2,4,10,0.8)"; ctx.fillRect(0, 0, W, H);
     ctx.globalCompositeOperation = "destination-out";
-
-    // fire light
-    const fr = 90 + 230 * (0.35 + 0.65 * f);
-    let fg = ctx.createRadialGradient(fsx, fsy, 10, fsx, fsy, fr);
-    fg.addColorStop(0, "rgba(0,0,0,1)");
-    fg.addColorStop(0.6, "rgba(0,0,0,0.7)");
-    fg.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = fg;
-    ctx.beginPath(); ctx.arc(fsx, fsy, fr, 0, 6.283); ctx.fill();
-
-    // player's small torch glow
-    const pr = 130;
-    let pg = ctx.createRadialGradient(psx, psy, 6, psx, psy, pr);
-    pg.addColorStop(0, "rgba(0,0,0,0.85)");
-    pg.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = pg;
-    ctx.beginPath(); ctx.arc(psx, psy, pr, 0, 6.283); ctx.fill();
-
+    let pg = ctx.createRadialGradient(psx, psy, 20, psx, psy, 250);
+    pg.addColorStop(0, "rgba(0,0,0,0.95)"); pg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = pg; ctx.beginPath(); ctx.arc(psx, psy, 250, 0, 6.3); ctx.fill();
+    let fg = ctx.createRadialGradient(fsx, fsy, 20, fsx, fsy, c.r + 120);
+    fg.addColorStop(0, "rgba(0,0,0,1)"); fg.addColorStop(0.7, "rgba(0,0,0,0.6)"); fg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = fg; ctx.beginPath(); ctx.arc(fsx, fsy, c.r + 120, 0, 6.3); ctx.fill();
     ctx.restore();
-
-    // warm tint over fire light
-    ctx.save();
-    ctx.globalCompositeOperation = "soft-light";
-    let wg = ctx.createRadialGradient(fsx, fsy, 10, fsx, fsy, fr);
-    wg.addColorStop(0, "rgba(255,160,60," + (0.5 * f) + ")");
-    wg.addColorStop(1, "rgba(255,160,60,0)");
-    ctx.fillStyle = wg;
-    ctx.beginPath(); ctx.arc(fsx, fsy, fr, 0, 6.283); ctx.fill();
+    ctx.save(); ctx.globalCompositeOperation = "soft-light";
+    let wg = ctx.createRadialGradient(fsx, fsy, 10, fsx, fsy, c.r + 80);
+    wg.addColorStop(0, "rgba(255,160,60,0.5)"); wg.addColorStop(1, "rgba(255,160,60,0)");
+    ctx.fillStyle = wg; ctx.beginPath(); ctx.arc(fsx, fsy, c.r + 80, 0, 6.3); ctx.fill();
     ctx.restore();
   }
 
-  // ---- Flow ----
-  const startScreen = document.getElementById("startScreen");
-  const endScreen = document.getElementById("endScreen");
-  const hud = document.getElementById("hud");
-  const flash = document.getElementById("flash");
-
-  function startGame() {
-    reset();
-    G.running = true;
-    startScreen.hidden = true;
-    endScreen.hidden = true;
-    hud.hidden = false;
-    flash.style.opacity = "0";
-  }
-
-  function endGame(won) {
-    G.running = false;
-    endDrag();
-    hud.hidden = true;
-    endScreen.hidden = false;
-    if (won) {
-      flash.style.transition = "opacity 1.2s ease";
-      flash.style.opacity = "0.9";
-      setTimeout(() => { flash.style.opacity = "0"; }, 700);
-      document.getElementById("endTitle").textContent = "🌅 동이 텄다!";
-      document.getElementById("endTitle").style.color = "#ffd98a";
-      document.getElementById("endMsg").textContent = "긴 밤을 살아남았다. 아침 햇살이 괴물들을 몰아낸다.";
-    } else {
-      document.getElementById("endTitle").textContent = "💀 어둠에 삼켜졌다";
-      document.getElementById("endTitle").style.color = "#ff6b8a";
-      const frac = G.t / G.night;
-      const totalMin = 21 * 60 + frac * 9 * 60;
-      let hh = Math.floor(totalMin / 60) % 24, mm = Math.floor(totalMin % 60);
-      document.getElementById("endMsg").textContent =
-        String(hh).padStart(2, "0") + ":" + String(mm).padStart(2, "0") + "까지 버텼다.";
-    }
-    document.getElementById("endStats").innerHTML =
-      "🪵 태운 장작 " + G.woodBurned + " · 🔥 처치 " + G.kills;
-  }
-
-  document.getElementById("startBtn").addEventListener("click", startGame);
-  document.getElementById("restartBtn").addEventListener("click", startGame);
-
+  // ---------- Flow ----------
+  $("startBtn").onclick = startGame;
+  $("restartBtn").onclick = () => { G.state = "title"; $("dead").hidden = true; $("title").hidden = false; };
   requestAnimationFrame(frame);
 })();
 </script>
