@@ -455,7 +455,7 @@
   });
   window.addEventListener("keyup", (e) => { G.keys[e.key.toLowerCase()] = false; });
   cv.addEventListener("mousemove", (e) => { G.mouse.sx = e.clientX; G.mouse.sy = e.clientY; });
-  cv.addEventListener("mousedown", () => { if (G.state === "playing") { G.mouse.down = true; fireOnce(); } });
+  cv.addEventListener("mousedown", () => { ensureAudio(); if (G.state === "playing") { G.mouse.down = true; fireOnce(); } });
   window.addEventListener("mouseup", () => { G.mouse.down = false; });
 
   // ----- Touch (mobile) -----
@@ -469,6 +469,7 @@
   const MAXR = 58;
   function aimAngle(dx, dy) { return Math.atan2(dy, dx); }
   cv.addEventListener("touchstart", (e) => {
+    ensureAudio();
     if (G.state !== "playing") return;
     for (const t of e.changedTouches) {
       if (t.clientX < W / 2 && G.move.id === null) {
@@ -570,20 +571,26 @@
   }
   // ----- swish sound (synth, no file) -----
   let audioCtx;
-  function playSwish() {
+  function ensureAudio() {
     try {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       if (audioCtx.state === "suspended") audioCtx.resume();
-      const A = audioCtx, now = A.currentTime, dur = 0.16;
+    } catch (e) {}
+  }
+  function playSwish() {
+    try {
+      ensureAudio();
+      if (!audioCtx) return;
+      const A = audioCtx, now = A.currentTime, dur = 0.2;
       const buf = A.createBuffer(1, Math.floor(A.sampleRate * dur), A.sampleRate);
       const data = buf.getChannelData(0);
       for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
       const src = A.createBufferSource(); src.buffer = buf;
-      const bp = A.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 0.7;
-      bp.frequency.setValueAtTime(800, now); bp.frequency.exponentialRampToValueAtTime(4200, now + dur);
+      const bp = A.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 0.6;
+      bp.frequency.setValueAtTime(700, now); bp.frequency.exponentialRampToValueAtTime(5000, now + dur);
       const gain = A.createGain();
       gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.exponentialRampToValueAtTime(0.5, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(1.0, now + 0.02);
       gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
       src.connect(bp); bp.connect(gain); gain.connect(A.destination);
       src.start(now); src.stop(now + dur);
@@ -1010,6 +1017,21 @@
       }
       fxCtx.globalAlpha = 1;
     }
+
+    // knife swing slash arc
+    if (fxCtx && G.player && G.player.weapon === "knife" && G.player.swing > 0) {
+      const pl = G.player;
+      _vproj.set(pl.x, pl.r, pl.y); _vproj.project(camera);
+      if (_vproj.z <= 1) {
+        const sx = (_vproj.x * 0.5 + 0.5) * W, sy = (-_vproj.y * 0.5 + 0.5) * H;
+        const prog = 1 - pl.swing / 0.18;             // 0..1 through the swing
+        const a = (pl.ang - 0.9) + 1.8 * prog;        // sweep across facing
+        fxCtx.globalAlpha = Math.min(1, pl.swing / 0.18);
+        fxCtx.strokeStyle = "#ffffff"; fxCtx.lineWidth = 6; fxCtx.lineCap = "round";
+        fxCtx.beginPath(); fxCtx.arc(sx, sy, 52, a - 0.55, a + 0.15); fxCtx.stroke();
+        fxCtx.globalAlpha = 1;
+      }
+    }
   }
 
   // ================= NEW SYSTEMS =================
@@ -1220,7 +1242,7 @@
 
 
   // ---------- Flow ----------
-  $("startBtn").onclick = startGame;
+  $("startBtn").onclick = () => { ensureAudio(); startGame(); };
   $("restartBtn").onclick = () => { G.state = "title"; $("dead").hidden = true; $("title").hidden = false; };
   init3D();
   requestAnimationFrame(frame);
