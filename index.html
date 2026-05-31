@@ -939,6 +939,9 @@
     $("lobby").hidden = true;
   }
   function mpOnMessage(peer, d) {
+    try { mpOnMessageInner(peer, d); } catch (e) { if (window.console) console.error("msg", e); }
+  }
+  function mpOnMessageInner(peer, d) {
     if (!d || !d.t) return;
     if (mpHost()) {
       if (d.t === "in") { mpPeers[peer] = true; G.netPlayers[peer] = { x: d.x, y: d.y, a: d.a, w: d.w, g: d.g, hp: d.hp, tp: d.tp, n: d.n, dead: d.dead };
@@ -977,15 +980,15 @@
     } else if (G.mp.on && G.player && G.started && now - lastNet > 80) {
       lastNet = now; window.NET.send(buildSnap());
     }
-    for (const id in G.remotes) if (now - G.remotes[id].t > 6000) delete G.remotes[id];
+    for (const id in G.remotes) if (now - G.remotes[id].t > 9000) delete G.remotes[id];
   }
   function frame(ts) {
     if (!last) last = ts;
     let dt = (ts - last) / 1000; last = ts;
     if (dt > 0.05) dt = 0.05;
-    if (G.state === "playing") update(dt);
-    netTick();
-    render();
+    try { if (G.state === "playing") update(dt); } catch (e) { if (window.console) console.error("update", e); }
+    try { netTick(); } catch (e) {}
+    try { render(); } catch (e) { if (window.console) console.error("render", e); }
     requestAnimationFrame(frame);
   }
 
@@ -1085,8 +1088,7 @@
         if (z.hp <= 0) { killZombie(z, i); continue; }
       }
     } else {
-      // client: zombies/clock from host snapshot — predict timer locally for smoothness, contact + visual
-      if (G.timer > 0) G.timer -= dt;
+      // client: zombies/clock come from host snapshot (no local prediction — avoid false 0)
       if (G._hurtCd > 0) G._hurtCd -= dt;
       for (const z of G.zombies) {
         if (z.hitFlash > 0) z.hitFlash -= dt;
