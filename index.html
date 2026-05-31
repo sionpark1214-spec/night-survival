@@ -333,6 +333,7 @@
     { id:"lava",   name:"용암함정", iron:1, wood:0, stone:5, place:true,  desc:"30+화상50, 1회용" },
     { id:"wall",   name:"벽",       iron:0, wood:10, stone:0, place:true,  desc:"체력 500" },
     { id:"torch",  name:"횃불",     iron:0, wood:3, stone:3, place:false, desc:"온도 천천히 감소" },
+    { id:"medkit", name:"메디킷",   iron:10, wood:5, stone:1, money:100, place:false, desc:"쓰러진 동료 부활" },
   ];
   const BUILD_BY_ID = {}; BUILDS.forEach(b => BUILD_BY_ID[b.id] = b);
   const HIRES = [
@@ -494,7 +495,8 @@
     G.day = 1; G.phase = "day"; G.timer = CFG.dayBase; G.money = 500;
     G.zombies = []; G.bullets = []; G.parts = []; G.pops = []; G.pools = [];
     G.spawnQueue = []; G.spawnTimer = 0; G.killCount = 0; G._hoverPrev = false;
-    G.res = { wood: 0, stone: 0, iron: 0 }; G.ammoStock = 0; G.carried = null; G.inv = { torch: 0 }; G.torch = 0; G.sharedGun = null;
+    G.res = { wood: 0, stone: 0, iron: 0 }; G.ammoStock = 0; G.carried = null; G.inv = { torch: 0, medkit: 0 }; G.torch = 0; G.sharedGun = null;
+    if (G.player) G.player.downed = false;
     G.allies = []; G.mines = []; G.turrets = []; G.lavas = []; G.placedWalls = []; G.warmZones = []; G.drops = [];
     G.panelKey = ""; G.panelCtx = null; G.allyRegenT = 20; G.medicFrac = 0;
     $("panel").className = ""; $("panelTitle").className = ""; $("placeBtn").style.display = "none"; $("inv").hidden = true;
@@ -510,10 +512,9 @@
     $("hud").hidden = false; $("touch").hidden = false;
   }
   function die(reason) {
-    if (G.mp.on && G.player) { // 멀티: 임시로 캠프파이어 부활 (정식 부활/메디킷은 3단계)
-      const c = G.campfire;
-      G.player.hp = 100; G.player.temp = 100; G.player.x = c.x; G.player.y = c.y + 30; G.player.hurtFlash = 0.3;
-      G.pops.push({ x: c.x, y: c.y, h: 40, t: 1.2, txt: "부활!", col: "#9fe8ff" });
+    if (G.mp.on && G.player) { // 멀티: 죽으면 쓰러짐(다운) — 동료가 메디킷/의무병으로 부활
+      if (!G.player.downed) { G.player.downed = true; G.player.hp = 0;
+        G.pops.push({ x: G.player.x, y: G.player.y, h: 44, t: 2, txt: "쓰러짐! 동료가 살려줘", col: "#ff8a9a" }); }
       return;
     }
     G.state = "dead"; clearSticks();
@@ -861,7 +862,7 @@
   const NODET = ["tree", "rock"];
   function buildSnap() {
     const p = G.player;
-    const P = [{ id: "host", x: Math.round(p.x), y: Math.round(p.y), a: +p.ang.toFixed(2), w: p.weapon, g: p.gun || "", hp: Math.round(p.hp), n: G.mp.name, dead: 0 }];
+    const P = [{ id: "host", x: Math.round(p.x), y: Math.round(p.y), a: +p.ang.toFixed(2), w: p.weapon, g: p.gun || "", hp: Math.round(p.hp), n: G.mp.name, dead: p.downed ? 1 : 0 }];
     for (const pid in G.netPlayers) { const np = G.netPlayers[pid]; P.push({ id: pid, x: np.x, y: np.y, a: np.a, w: np.w, g: np.g, hp: np.hp, n: np.n, dead: np.dead }); }
     const Z = [];
     for (const z of G.zombies) Z.push([z.id || 0, Math.round(z.x), Math.round(z.y), ZIDX[z.type] || 0, Math.round(z.hp)]);
@@ -897,6 +898,24 @@
     return { t: "init", N: N, D: [G.day, PIDX[G.phase], +G.timer.toFixed(1)] };
   }
   function sendInit() { if (window.NET) window.NET.send(mpInitMsg()); }
+  // ----- revive (downed teammates) -----
+  function undown(p) { if (!p) return; p.downed = false; p.hp = 60; p.temp = Math.max(p.temp, 40); G.pops.push({ x: p.x, y: p.y, h: 44, t: 1.4, txt: "부활!", col: "#9fe8ff" }); }
+  function sendRevive(targetId) {
+    if (!window.NET) return;
+    if (mpHost()) window.NET.sendTo(targetId, { t: "revd" }); // host revives a client directly
+    else window.NET.send({ t: "rev", target: targetId });     // client asks host to relay
+  }
+  function nearestDownedTeammate(x, y, range) {
+    let best = null, bd = range;
+    for (const id in G.remotes) { const r = G.remotes[id]; if (!r.dead) continue; const d = Math.hypot(x - r.x, y - r.y); if (d < bd) { bd = d; best = id; } }
+    return best;
+  }
+  function useMedkit() {
+    if (!G.player || (G.inv.medkit || 0) <= 0) return false;
+    const tg = nearestDownedTeammate(G.player.x, G.player.y, 130);
+    if (!tg) return false;
+    G.inv.medkit--; sendRevive(tg); return true;
+  }
   function clientStart(d) {
     startGame();
     if (d.N) G.nodes = d.N.map((a) => ({ type: NODET[a[0]] || "tree", x: a[1], y: a[2], hp: a[3], cd: 0, shake: 0 }));
@@ -916,15 +935,16 @@
         if (k === "gun") { const g = GUN_BY_ID[d.id]; if (g && G.money >= g.price) { G.money -= g.price; equipGunAll(d.id); } }
         else if (k === "ammo") { if (G.money >= TURRET_AMMO.price) { G.money -= TURRET_AMMO.price; G.ammoStock += TURRET_AMMO.amount; } }
         else if (k === "hire") { const h = HIRE_BY_ID[d.id]; if (h && G.money >= h.price) G.money -= h.price; }
-        else if (k === "craft") { const b = BUILD_BY_ID[d.id]; if (b && canAffordRes(b)) { G.res.iron -= b.iron; G.res.wood -= b.wood; G.res.stone -= b.stone; } }
+        else if (k === "craft") { const b = BUILD_BY_ID[d.id]; if (b && canAffordRes(b) && (!b.money || G.money >= b.money)) { G.res.iron -= b.iron; G.res.wood -= b.wood; G.res.stone -= b.stone; if (b.money) G.money -= b.money; } }
         else if (k === "harv") { if (d.r && G.res[d.r] !== undefined) G.res[d.r] += (d.n || 1); }
         else if (k === "repair") { if (G.res.wood >= 3) G.res.wood -= 3; }
         else if (k === "refill") { G.ammoStock = Math.max(0, G.ammoStock - (d.amt || 200)); }
       }
+      else if (d.t === "rev") { const tg = d.target; if (tg === "host") undown(G.player); else if (window.NET) window.NET.sendTo(tg, { t: "revd" }); }
     } else {
       if (d.t === "snap") applySnap(d);
       else if (d.t === "init" && !G.started) { G.started = true; clientStart(d); }
-      else if (d.t === "rew") { G.money += d.a; }
+      else if (d.t === "revd") { if (G.player) undown(G.player); }
     }
   }
   let last = 0, lastNet = 0;
@@ -934,7 +954,7 @@
     if (mpClient()) {
       if (G.player && G.state === "playing" && now - lastNet > 66) {
         lastNet = now; const p = G.player;
-        window.NET.send({ t: "in", x: Math.round(p.x), y: Math.round(p.y), a: +p.ang.toFixed(2), w: p.weapon, g: p.gun || "", hp: Math.round(p.hp), tp: Math.round(p.temp), n: G.mp.name, dead: 0 });
+        window.NET.send({ t: "in", x: Math.round(p.x), y: Math.round(p.y), a: +p.ang.toFixed(2), w: p.weapon, g: p.gun || "", hp: Math.round(p.hp), tp: Math.round(p.temp), n: G.mp.name, dead: p.downed ? 1 : 0 });
       }
       if (G.dmgQ.length) window.NET.send({ t: "dmg", q: G.dmgQ.splice(0, G.dmgQ.length) });
     } else if (G.mp.on && G.player && G.state === "playing" && now - lastNet > 80) {
@@ -960,6 +980,7 @@
     if (G.keys["a"] || G.keys["arrowleft"]) mx -= 1;
     if (G.keys["d"] || G.keys["arrowright"]) mx += 1;
     if (G.move.mag > 0.1) { mx = G.move.dx; my = G.move.dy; } // touch stick
+    if (p.downed) { mx = 0; my = 0; } // 쓰러지면 못 움직임
     let spd = CFG.playerSpeed;
     if (p.weapon === "gun" && p.gun && GUN_BY_ID[p.gun].slow) spd *= 0.55;
     if (mx || my) { const m = Math.hypot(mx, my); p.x += mx / m * spd * dt; p.y += my / m * spd * dt; }
@@ -969,12 +990,12 @@
     if (G.aim.active) p.ang = G.aim.ang;
     else { const mw = mouseWorld(); p.ang = Math.atan2(mw.y - p.y, mw.x - p.x); }
     // auto-fire while aim stick held (mobile)
-    if (G.aim.active) {
+    if (!p.downed && G.aim.active) {
       if (p.weapon === "knife") swingKnife();
       else if (p.gun) shoot(GUN_BY_ID[p.gun]);
     }
     // gun fire button held: auto-aim nearest zombie (unless aim stick active)
-    if (G.gunFiring && p.weapon === "gun" && p.gun) {
+    if (!p.downed && G.gunFiring && p.weapon === "gun" && p.gun) {
       let ang;
       if (G.aim.active) ang = G.aim.ang;
       else { const z = nearestZombie(p.x, p.y, 1400); ang = z ? Math.atan2(z.y - p.y, z.x - p.x) : p.ang; }
@@ -986,17 +1007,19 @@
     if (p.swing > 0) p.swing -= dt;
     if (p.hurtFlash > 0) p.hurtFlash -= dt;
     if (p.reloading > 0) { p.reloading -= dt; if (p.reloading <= 0) { p.reloading = 0; const g = GUN_BY_ID[p.gun]; if (g && g.mag !== Infinity) p.ammo = g.mag; } }
-    if (G.mouse.down && p.weapon === "gun" && p.gun) { const g = GUN_BY_ID[p.gun]; if (g.auto) shoot(g); }
+    if (!p.downed && G.mouse.down && p.weapon === "gun" && p.gun) { const g = GUN_BY_ID[p.gun]; if (g.auto) shoot(g); }
 
     const c = G.campfire;
-    const nearFire = Math.hypot(p.x - c.x, p.y - c.y) < c.r;
-    let nearWarm = false;
-    for (const wz of G.warmZones) if (Math.hypot(p.x - wz.x, p.y - wz.y) < wz.r) { nearWarm = true; break; }
-    // torch: once held it stays lit (continuous effect, even while attacking)
-    if (nearFire) { p.temp = Math.min(100, p.temp + CFG.regenTemp * dt); p.hp = Math.min(100, p.hp + CFG.regenHp * dt); }
-    else if (nearWarm) { p.temp = Math.min(100, p.temp + CFG.regenTemp * dt); }
-    else { p.temp -= (G.torch > 0 ? CFG.tempDrain * 0.3 : CFG.tempDrain) * dt; }
-    if (p.temp <= 0) { p.temp = 0; return die("온도가 0이 되어 얼어붙었다…"); }
+    if (!p.downed) {
+      const nearFire = Math.hypot(p.x - c.x, p.y - c.y) < c.r;
+      let nearWarm = false;
+      for (const wz of G.warmZones) if (Math.hypot(p.x - wz.x, p.y - wz.y) < wz.r) { nearWarm = true; break; }
+      // torch: once held it stays lit (continuous effect, even while attacking)
+      if (nearFire) { p.temp = Math.min(100, p.temp + CFG.regenTemp * dt); p.hp = Math.min(100, p.hp + CFG.regenHp * dt); }
+      else if (nearWarm) { p.temp = Math.min(100, p.temp + CFG.regenTemp * dt); }
+      else { p.temp -= (G.torch > 0 ? CFG.tempDrain * 0.3 : CFG.tempDrain) * dt; }
+      if (p.temp <= 0) { p.temp = 0; return die("온도가 0이 되어 얼어붙었다…"); }
+    }
 
     if (mpHost()) {
       G.timer -= dt;
@@ -1241,8 +1264,9 @@
     if (!G.player) { renderer.render(scene, camera); return; }
     const p = G.player;
     playerMesh.visible = true;
-    playerMesh.position.set(p.x, 0, p.y); playerMesh.scale.set(p.r, p.r, p.r); playerMesh.rotation.y = Math.PI / 2 - p.ang;
-    playerMesh.userData.mat.color.setHex(p.hurtFlash > 0 ? 0xffb0b0 : 0xffd98a);
+    playerMesh.rotation.y = Math.PI / 2 - p.ang;
+    if (p.downed) { playerMesh.position.set(p.x, 4, p.y); playerMesh.scale.set(p.r, p.r * 0.35, p.r); playerMesh.userData.mat.color.setHex(0x6a6a78); }
+    else { playerMesh.position.set(p.x, 0, p.y); playerMesh.scale.set(p.r, p.r, p.r); playerMesh.userData.mat.color.setHex(p.hurtFlash > 0 ? 0xffb0b0 : 0xffd98a); }
     playerLight.position.set(p.x, 90, p.y);
     camera.position.set(p.x, 560, p.y + 430); camera.lookAt(p.x, 0, p.y);
     if (campMesh) campMesh.scale.set(1, 1 + Math.sin(performance.now() / 110) * 0.18, 1);
@@ -1299,8 +1323,9 @@
     const rids = G.mp.on ? Object.keys(G.remotes) : [];
     const remp = pool("remote", rids.length, () => makeChar(0x7ad1ff));
     rids.forEach((id, i) => { const d = G.remotes[id], m = remp[i]; m.visible = true;
-      m.position.set(d.x, 0, d.y); m.scale.set(16, 16, 16); m.rotation.y = Math.PI / 2 - (d.ang || 0);
-      m.userData.mat.color.setHex(d.dead ? 0x555566 : 0x7ad1ff); });
+      m.rotation.y = Math.PI / 2 - (d.ang || 0);
+      if (d.dead) { m.position.set(d.x, 4, d.y); m.scale.set(16, 6, 16); m.userData.mat.color.setHex(0x555566); }
+      else { m.position.set(d.x, 0, d.y); m.scale.set(16, 16, 16); m.userData.mat.color.setHex(0x7ad1ff); } });
 
     renderer.render(scene, camera);
 
@@ -1341,7 +1366,7 @@
         _vproj.set(d.x, 50, d.y); _vproj.project(camera);
         if (_vproj.z > 1) continue;
         const sx = (_vproj.x * 0.5 + 0.5) * W, sy = (-_vproj.y * 0.5 + 0.5) * H;
-        const nm = (d.name || "친구") + (d.dead ? " 💀" : "");
+        const nm = (d.name || "친구") + (d.dead ? " 🩹쓰러짐(살려줘!)" : "");
         fxCtx.lineWidth = 3; fxCtx.strokeStyle = "rgba(0,0,0,0.6)"; fxCtx.strokeText(nm, sx, sy);
         fxCtx.fillStyle = d.dead ? "#ff8a9a" : "#9fe8ff"; fxCtx.fillText(nm, sx, sy);
       }
@@ -1350,9 +1375,9 @@
         _vproj.set(G.player.x, 58, G.player.y); _vproj.project(camera);
         if (_vproj.z <= 1) {
           const sx = (_vproj.x * 0.5 + 0.5) * W, sy = (-_vproj.y * 0.5 + 0.5) * H;
-          const nm = "▼ 나" + (G.mp.name ? " (" + G.mp.name + ")" : "");
+          const nm = G.player.downed ? "🩹 쓰러짐 — 살려줘!" : ("▼ 나" + (G.mp.name ? " (" + G.mp.name + ")" : ""));
           fxCtx.font = "bold 14px sans-serif"; fxCtx.lineWidth = 3; fxCtx.strokeStyle = "rgba(0,0,0,0.7)";
-          fxCtx.strokeText(nm, sx, sy); fxCtx.fillStyle = "#ffe07a"; fxCtx.fillText(nm, sx, sy);
+          fxCtx.strokeText(nm, sx, sy); fxCtx.fillStyle = G.player.downed ? "#ff8a9a" : "#ffe07a"; fxCtx.fillText(nm, sx, sy);
         }
       }
     }
@@ -1390,9 +1415,18 @@
       if (a.cd > 0) a.cd -= dt;
       if (a.hurtCd > 0) a.hurtCd -= dt;
       if (a.kind === "medic") {
-        // 회복 1초당 0.5 (부활 작업 중이면 회복 안 함 — 멀티 부활 단계에서 처리)
-        p.hp = Math.min(100, p.hp + 0.5 * dt);
-        for (const b of G.allies) b.hp = Math.min(b.max, b.hp + 0.5 * dt);
+        // 쓰러진 동료(또는 내 캐릭터)가 근처면 30초 부활 작업 (그동안 회복 안 함)
+        let target = null, bd = 150;
+        for (const id in G.remotes) { const r = G.remotes[id]; if (!r.dead) continue; const dd = Math.hypot(a.x - r.x, a.y - r.y); if (dd < bd) { bd = dd; target = id; } }
+        const ownDown = G.mp.on && p.downed && Math.hypot(a.x - p.x, a.y - p.y) < 150;
+        if (target || ownDown) {
+          a.reviveProg = (a.reviveProg || 0) + dt;
+          if (a.reviveProg >= 30) { a.reviveProg = 0; if (ownDown) undown(p); else sendRevive(target); }
+        } else {
+          a.reviveProg = 0;
+          p.hp = Math.min(100, p.hp + 0.5 * dt);
+          for (const b of G.allies) b.hp = Math.min(b.max, b.hp + 0.5 * dt);
+        }
       }
       const z = (a.kind === "melee" || a.kind === "gun") ? nearestZombie(a.x, a.y, 320) : null;
       if (z) {
@@ -1475,9 +1509,11 @@
   function canAffordRes(b) { return G.res.iron >= b.iron && G.res.wood >= b.wood && G.res.stone >= b.stone; }
   function craftBuild(id) {
     const b = BUILD_BY_ID[id]; if (!canAffordRes(b)) return;
+    if (b.money && G.money < b.money) return;
     if (b.place && G.carried) return;
-    if (mpClient()) netAct({ k: "craft", id: id }); else { G.res.iron -= b.iron; G.res.wood -= b.wood; G.res.stone -= b.stone; }
-    if (b.place) G.carried = id; else G.inv.torch++;
+    if (mpClient()) netAct({ k: "craft", id: id });
+    else { G.res.iron -= b.iron; G.res.wood -= b.wood; G.res.stone -= b.stone; if (b.money) G.money -= b.money; }
+    if (b.place) G.carried = id; else G.inv[id] = (G.inv[id] || 0) + 1;
   }
   function placeCarried() {
     if (!G.carried) return;
@@ -1534,8 +1570,8 @@
       for (const h of HIRES) mk(h.name, "체력 " + h.hp, h.price + "원", () => G.money >= h.price && G.allies.length < 30, () => { hirePerson(h.id); buildPanel(G.panelCtx); });
     } else if (ctx2.kind === "station" && ctx2.t === "bench") {
       title.textContent = "🛠️ 분쇄작업대";
-      for (const b of BUILDS) { const cost = [b.wood ? "🪵" + b.wood : "", b.stone ? "🪨" + b.stone : "", b.iron ? "🔩" + b.iron : ""].filter(Boolean).join(" ");
-        mk(b.name, b.desc, cost, () => canAffordRes(b) && !(b.place && G.carried), () => craftBuild(b.id)); }
+      for (const b of BUILDS) { const cost = [b.wood ? "🪵" + b.wood : "", b.stone ? "🪨" + b.stone : "", b.iron ? "🔩" + b.iron : "", b.money ? "💰" + b.money : ""].filter(Boolean).join(" ");
+        mk(b.name, b.desc, cost, () => canAffordRes(b) && (!b.money || G.money >= b.money) && !(b.place && G.carried), () => craftBuild(b.id)); }
     } else if (ctx2.kind === "turret") {
       title.textContent = "🔧 터렛 채우기";
       mk("채우기", "보유탄약", "+200", () => G.ammoStock > 0, () => refillTurret(G.panelCtx && G.panelCtx.t));
@@ -1561,6 +1597,13 @@
     const tb = document.createElement("button"); tb.textContent = G.torch > 0 ? "켜짐" : "들기"; tb.disabled = !(G.inv.torch > 0 && G.torch <= 0);
     tb.onclick = () => { if (G.inv.torch > 0 && G.torch <= 0) { G.inv.torch--; G.torch = 1; buildInv(); } };
     tr.appendChild(tb); list.appendChild(tr);
+    // medkit (revive a downed teammate nearby)
+    const mr = document.createElement("div"); mr.className = "invrow";
+    const nearDown = G.player ? nearestDownedTeammate(G.player.x, G.player.y, 130) : null;
+    mr.innerHTML = `<span>🩹 메디킷 ×${G.inv.medkit || 0}${nearDown ? " · 쓰러진 동료 옆!" : ""}</span>`;
+    const mb = document.createElement("button"); mb.textContent = "사용"; mb.disabled = !((G.inv.medkit || 0) > 0 && nearDown);
+    mb.onclick = () => { if (useMedkit()) { closeInv(); } };
+    mr.appendChild(mb); list.appendChild(mr);
   }
   function closeInv() { if (G.state === "inventory") { G.state = "playing"; $("inv").hidden = true; } }
   $("invBtn").onclick = openInv; $("invClose").onclick = closeInv;

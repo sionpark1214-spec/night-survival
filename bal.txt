@@ -1,7 +1,9 @@
 block0 depths={'(': 0, '{': 0, '[': 0}
 block1 depths={'(': 0, '{': 0, '[': 0}
-equipGunAll_def=1
-equipGunAll_use=3
-netAct_def=1
-netAct_use=8
-act_handler=1
+undown_def=1
+sendRevive_def=1
+useMedkit_def=1
+nearestDownedTeammate_def=1
+downed_refs=15
+medkit_refs=7
+revd=3
