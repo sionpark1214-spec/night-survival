@@ -427,6 +427,19 @@
   }
 
   // ---------- Collision ----------
+  // segment (x0,y0)->(x1,y1) vs axis-aligned rect (Liang–Barsky)
+  function segHitsRect(x0, y0, x1, y1, rx, ry, rw, rh) {
+    const dx = x1 - x0, dy = y1 - y0;
+    let t0 = 0, t1 = 1;
+    const p = [-dx, dx, -dy, dy], q = [x0 - rx, rx + rw - x0, y0 - ry, ry + rh - y0];
+    for (let i = 0; i < 4; i++) {
+      if (p[i] === 0) { if (q[i] < 0) return false; }
+      else { const r = q[i] / p[i];
+        if (p[i] < 0) { if (r > t1) return false; if (r > t0) t0 = r; }
+        else { if (r < t0) return false; if (r < t1) t1 = r; } }
+    }
+    return true;
+  }
   function resolve(o, r) {
     const lists = [G.walls, G.placedWalls];
     for (const list of lists) for (const wl of list) {
@@ -919,9 +932,10 @@
 
     for (let i = G.bullets.length - 1; i >= 0; i--) {
       const b = G.bullets[i];
+      const bx0 = b.x, by0 = b.y;
       b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
       let dead = b.life <= 0;
-      if (!dead) for (const wl of G.walls) if (b.x > wl.x && b.x < wl.x + wl.w && b.y > wl.y && b.y < wl.y + wl.h) { dead = true; break; }
+      if (!dead) for (const wl of G.walls) if (segHitsRect(bx0, by0, b.x, b.y, wl.x, wl.y, wl.w, wl.h)) { dead = true; break; }
       if (!dead) for (let j = G.zombies.length - 1; j >= 0; j--) {
         const z = G.zombies[j];
         if (Math.hypot(b.x - z.x, b.y - z.y) < z.r + 4) {
