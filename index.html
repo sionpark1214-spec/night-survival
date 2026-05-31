@@ -1010,15 +1010,21 @@
     }
     for (const id in G.remotes) if (now - G.remotes[id].t > 9000) delete G.remotes[id];
   }
-  function frame(ts) {
+  function step(ts) {
     if (!last) last = ts;
     let dt = (ts - last) / 1000; last = ts;
-    if (dt > 0.05) dt = 0.05;
+    if (dt > 0.1) dt = 0.1;
     try { if (G.state === "playing") update(dt); } catch (e) { if (window.console) console.error("update", e); }
     try { netTick(); } catch (e) {}
+  }
+  function frame(ts) {
+    step(ts);
     try { render(); } catch (e) { if (window.console) console.error("render", e); }
     requestAnimationFrame(frame);
   }
+  // keepalive: when the tab is hidden, requestAnimationFrame is paused by the browser —
+  // keep the simulation & networking alive so the host (and sync) don't freeze for everyone.
+  setInterval(() => { if (document.hidden && G.state === "playing") step(performance.now()); }, 100);
 
   function update(dt) {
     const p = G.player;
