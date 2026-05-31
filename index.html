@@ -343,7 +343,7 @@
     playerSpeed: 210, playerR: 16,
     knifeRange: 32, knifeArc: 1.5, knifeDelay: 0.4, knifeDmg: 5, knifeBackstab: 10,
     tempDrain: 2, regenTemp: 10, regenHp: 10, campRadius: 110,
-    dayBase: 20, dayInc: 30, night: 60,
+    dayBase: 20, dayInc: 30, night: 60, nightInc: 5,
     bulletSpeed: 820, flameRange: 130,
   };
 
@@ -481,7 +481,7 @@
 
   // ---------- Night spawn ----------
   function beginNight() {
-    G.phase = "night"; G.timer = CFG.night;
+    G.phase = "night"; G.timer = CFG.night + (G.day - 1) * CFG.nightInc;
     const day = G.day;
     const avail = NORMAL_TYPES.filter(t => day >= ZT[t].since);
     const total = Math.min(90, 6 + day * 3);
