@@ -159,29 +159,37 @@
       peer: null, isHost: false, conns: [], hostConn: null, _timer: null,
       connect(code, isHost, onState, onLeave, onJoin, onReady, onError) {
         try { this.leave(); } catch (e) {}
-        this.isHost = isHost; this.conns = []; this.hostConn = null;
+        this.isHost = isHost; this.conns = []; this.hostConn = null; this._left = false;
+        const self = this;
         let ready = false;
-        const ok = (c) => { ready = true; if (this._timer) { clearTimeout(this._timer); this._timer = null; } onReady && onReady(c); };
-        this._timer = setTimeout(() => { if (!ready) onError && onError("연결 시간초과 — 다시 시도하거나 둘 다 새로고침해줘"); }, 22000);
+        const ok = (c) => { ready = true; if (self._timer) { clearTimeout(self._timer); self._timer = null; } onReady && onReady(c); };
+        self._timer = setTimeout(() => { if (!ready) onError && onError("연결 시간초과 — 다시 시도하거나 둘 다 새로고침해줘"); }, 22000);
         if (isHost) {
           const peer = new Peer(PID(code), PEER_OPTS); this.peer = peer; this.myId = "host";
           peer.on("open", () => ok(code));
-          peer.on("error", (e) => onError && onError(String(e && e.type ? e.type : e)));
+          peer.on("disconnected", () => { try { peer.reconnect(); } catch (e) {} }); // keep broker link alive
+          peer.on("error", (e) => { if (!ready) onError && onError(String(e && e.type ? e.type : e)); });
           peer.on("connection", (conn) => {
-            conn.on("open", () => { this.conns.push(conn); onJoin && onJoin(conn.peer); });
+            conn.on("open", () => { self.conns.push(conn); onJoin && onJoin(conn.peer); });
             conn.on("data", (d) => onState && onState(conn.peer, d));
-            conn.on("close", () => { this.conns = this.conns.filter((c) => c !== conn); onLeave && onLeave(conn.peer); });
+            conn.on("close", () => { self.conns = self.conns.filter((c) => c !== conn); onLeave && onLeave(conn.peer); });
+            conn.on("error", () => {});
           });
         } else {
           const peer = new Peer(PEER_OPTS); this.peer = peer;
-          peer.on("error", (e) => onError && onError(String(e && e.type ? e.type : e)));
-          peer.on("open", (id) => {
-            this.myId = id;
-            const conn = peer.connect(PID(code), { reliable: true }); this.hostConn = conn;
-            conn.on("open", () => { ok(code); onJoin && onJoin(PID(code)); });
+          peer.on("disconnected", () => { try { peer.reconnect(); } catch (e) {} });
+          peer.on("error", (e) => { if (!ready) onError && onError(String(e && e.type ? e.type : e)); });
+          let reconnecting = false;
+          function openConn() {
+            const conn = peer.connect(PID(code), { reliable: true }); self.hostConn = conn;
+            conn.on("open", () => { reconnecting = false; if (!ready) { ok(code); onJoin && onJoin(PID(code)); } });
             conn.on("data", (d) => onState && onState(PID(code), d));
-            conn.on("close", () => onLeave && onLeave(PID(code)));
-          });
+            const retry = () => { if (self._left || reconnecting) return; reconnecting = true;
+              setTimeout(() => { if (!self._left && self.peer && !self.peer.destroyed) { try { openConn(); } catch (e) { reconnecting = false; } } }, 1500); };
+            conn.on("close", retry);
+            conn.on("error", retry);
+          }
+          peer.on("open", (id) => { self.myId = id; openConn(); });
         }
       },
       send(d) {
@@ -189,7 +197,7 @@
         else if (this.hostConn && this.hostConn.open) { try { this.hostConn.send(d); } catch (e) {} }
       },
       sendTo(peerId, d) { for (const c of this.conns) { if (c && c.peer === peerId && c.open) { try { c.send(d); } catch (e) {} return; } } },
-      leave() { if (this._timer) { clearTimeout(this._timer); this._timer = null; } try { this.peer && this.peer.destroy(); } catch (e) {} this.peer = null; this.conns = []; this.hostConn = null; }
+      leave() { this._left = true; if (this._timer) { clearTimeout(this._timer); this._timer = null; } try { this.peer && this.peer.destroy(); } catch (e) {} this.peer = null; this.conns = []; this.hostConn = null; }
     };
   })();
 </script>
