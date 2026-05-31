@@ -661,7 +661,13 @@
     const ic = r === "wood" ? "🪵" : r === "iron" ? "🔩" : "🪨";
     G.pops.push({ x: nd.x, y: nd.y, h: nd.type === "tree" ? 44 : 30, t: 0.8, txt: ic + "+1", col: RES_COL[r] });
     nd.hp--;
-    if (nd.hp <= 0) { const i = G.nodes.indexOf(nd); if (i >= 0) G.nodes.splice(i, 1); G.nodes.push(makeNode(nd.type)); }
+    if (nd.hp <= 0) { const i = G.nodes.indexOf(nd); if (i >= 0) G.nodes.splice(i, 1); } // 캐면 사라짐(리필 없음, 하루마다 새로 생김)
+  }
+  function spawnDailyNodes() {
+    const added = [];
+    for (let i = 0; i < 3; i++) { const t = makeNode("tree"); G.nodes.push(t); added.push([0, Math.round(t.x), Math.round(t.y), t.hp]); }
+    for (let i = 0; i < 3; i++) { const r = makeNode("rock"); G.nodes.push(r); added.push([1, Math.round(r.x), Math.round(r.y), r.hp]); }
+    if (G.mp.on && window.NET) window.NET.send({ t: "newnodes", N: added });
   }
   function tryHarvest(sx, sy) {
     if (G.state !== "playing" || !G.player || !G.nodes.length) return false;
@@ -944,6 +950,7 @@
     } else {
       if (d.t === "snap") applySnap(d);
       else if (d.t === "init" && !G.started) { G.started = true; clientStart(d); }
+      else if (d.t === "newnodes" && d.N) { for (const a of d.N) G.nodes.push({ type: NODET[a[0]] || "tree", x: a[1], y: a[2], hp: a[3], cd: 0, shake: 0 }); }
       else if (d.t === "revd") { if (G.player) undown(G.player); }
     }
   }
@@ -1035,6 +1042,7 @@
               else { G.res.stone += 10; G.res.wood += 10; }
             } }
           G.day++; G.phase = "day"; G.timer = CFG.dayBase + (G.day - 1) * CFG.dayInc;
+          spawnDailyNodes();
         }
       }
       if (G.phase === "night" && G.spawnQueue.length) {
