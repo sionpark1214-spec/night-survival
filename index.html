@@ -751,7 +751,7 @@
       if (d < CFG.flameRange + z.r) {
         const za = Math.atan2(dy, dx);
         let diff = Math.abs(((za - ang + Math.PI) % (2 * Math.PI)) - Math.PI);
-        if (diff < 0.5) { z.hp -= g.dmg * (1 / 60); z.burn = Math.max(z.burn, 3.0); z.hitFlash = 0.05; }
+        if (diff < 0.5) { z.hp -= g.dmg * g.delay; z.hitFlash = 0.05; } // 직접 50/초, 화상 없음
       }
     }
     for (let i = 0; i < 3; i++) {
@@ -1352,7 +1352,7 @@
   }
   function buyTurretAmmo() { if (G.money < TURRET_AMMO.price) return; G.money -= TURRET_AMMO.price; G.ammoStock += TURRET_AMMO.amount; }
   function refillTurret(t) { if (!t) return; const amt = Math.min(G.ammoStock, 200); t.ammo += amt; G.ammoStock -= amt; }
-  function repairWall(w) { if (!w || G.res.wood <= 0 || w.hp >= w.max) return; G.res.wood--; w.hp = Math.min(w.max, w.hp + 100); }
+  function repairWall(w) { if (!w || G.res.wood < 3 || w.hp >= w.max) return; G.res.wood -= 3; w.hp = Math.min(w.max, w.hp + 100); }
 
   // ----- context panel -----
   function nearestStation() { const p = G.player; let best = null, bd = Infinity;
@@ -1396,7 +1396,7 @@
       mk("채우기", "보유탄약", "+200", () => G.ammoStock > 0, () => refillTurret(G.panelCtx && G.panelCtx.t));
     } else if (ctx2.kind === "wall") {
       title.textContent = "🧱 벽 수리";
-      mk("수리", "나무 1개", "+100", () => G.res.wood > 0, () => repairWall(G.panelCtx && G.panelCtx.t));
+      mk("수리", "나무 3개", "+100", () => G.res.wood >= 3, () => repairWall(G.panelCtx && G.panelCtx.t));
     }
     panel.className = "show"; title.className = "show";
   }
