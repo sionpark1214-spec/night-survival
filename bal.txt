@@ -1,0 +1,7 @@
+block0 depths={'(': 0, '{': 0, '[': 0}
+block1 depths={'(': 0, '{': 0, '[': 0}
+equipGunAll_def=1
+equipGunAll_use=3
+netAct_def=1
+netAct_use=8
+act_handler=1

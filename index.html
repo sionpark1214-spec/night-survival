@@ -394,8 +394,9 @@
     nodes: [],
     mp: { on: false, isHost: false, code: null, name: null },
     remotes: {},
-    zid: 0, netPlayers: {}, dmgQ: [], snap: null, started: false,
+    zid: 0, netPlayers: {}, dmgQ: [], snap: null, started: false, sharedGun: null,
   };
+  function netAct(o) { if (window.NET) window.NET.send(Object.assign({ t: "act" }, o)); }
   function rand(a, b) { return a + Math.random() * (b - a); }
   // multiplayer role: host = authoritative world (also single-player). client = receives world from host.
   function mpHost() { return !G.mp.on || G.mp.isHost; }
@@ -493,7 +494,7 @@
     G.day = 1; G.phase = "day"; G.timer = CFG.dayBase; G.money = 500;
     G.zombies = []; G.bullets = []; G.parts = []; G.pops = []; G.pools = [];
     G.spawnQueue = []; G.spawnTimer = 0; G.killCount = 0; G._hoverPrev = false;
-    G.res = { wood: 0, stone: 0, iron: 0 }; G.ammoStock = 0; G.carried = null; G.inv = { torch: 0 }; G.torch = 0;
+    G.res = { wood: 0, stone: 0, iron: 0 }; G.ammoStock = 0; G.carried = null; G.inv = { torch: 0 }; G.torch = 0; G.sharedGun = null;
     G.allies = []; G.mines = []; G.turrets = []; G.lavas = []; G.placedWalls = []; G.warmZones = []; G.drops = [];
     G.panelKey = ""; G.panelCtx = null; G.allyRegenT = 20; G.medicFrac = 0;
     $("panel").className = ""; $("panelTitle").className = ""; $("placeBtn").style.display = "none"; $("inv").hidden = true;
@@ -653,9 +654,11 @@
   }
   function harvestNode(nd) {
     nd.cd = 0.4; nd.shake = 0.3;
-    if (nd.type === "tree") { G.res.wood++; G.pops.push({ x: nd.x, y: nd.y, h: 44, t: 0.8, txt: "🪵+1", col: RES_COL.wood }); }
-    else { if (Math.random() < 0.25) { G.res.iron++; G.pops.push({ x: nd.x, y: nd.y, h: 30, t: 0.8, txt: "🔩+1", col: RES_COL.iron }); }
-      else { G.res.stone++; G.pops.push({ x: nd.x, y: nd.y, h: 30, t: 0.8, txt: "🪨+1", col: RES_COL.stone }); } }
+    let r = "wood";
+    if (nd.type !== "tree") r = (Math.random() < 0.25) ? "iron" : "stone";
+    if (mpClient()) netAct({ k: "harv", r: r, n: 1 }); else G.res[r]++;
+    const ic = r === "wood" ? "🪵" : r === "iron" ? "🔩" : "🪨";
+    G.pops.push({ x: nd.x, y: nd.y, h: nd.type === "tree" ? 44 : 30, t: 0.8, txt: ic + "+1", col: RES_COL[r] });
     nd.hp--;
     if (nd.hp <= 0) { const i = G.nodes.indexOf(nd); if (i >= 0) G.nodes.splice(i, 1); G.nodes.push(makeNode(nd.type)); }
   }
@@ -694,10 +697,15 @@
   }
   function buyGun(id) {
     const g = GUN_BY_ID[id];
-    if (G.money < g.price || G.player.gun === id) return;
-    G.money -= g.price; G.player.gun = id; G.player.weapon = "gun";
-    G.player.ammo = g.mag === Infinity ? Infinity : g.mag;
-    G.player.reloading = 0; G.player.fireCd = 0;
+    if (!g || G.money < g.price) return;
+    if (mpClient()) { netAct({ k: "gun", id: id }); return; } // host sets shared gun for everyone
+    G.money -= g.price; equipGunAll(id);
+  }
+  function equipGunAll(id) {
+    const g = GUN_BY_ID[id]; if (!g) return;
+    G.sharedGun = id;
+    if (G.player) { G.player.gun = id; G.player.weapon = "gun";
+      G.player.ammo = g.mag === Infinity ? Infinity : g.mag; G.player.reloading = 0; G.player.fireCd = 0; }
   }
   function closeShop() { if (G.state === "shopping") { G.state = "playing"; $("shop").hidden = true; } }
   $("shopClose").onclick = closeShop;
@@ -819,11 +827,10 @@
     if (mpClient()) { G.zombies.splice(idx, 1); return; } // host is authoritative for kills
     const def = ZT[z.type];
     const amt = Math.round(def.reward * (mult || 1));
-    if (G.mp.on && z.lastHitBy && z.lastHitBy !== "host" && window.NET) window.NET.sendTo(z.lastHitBy, { t: "rew", a: amt });
-    else G.money += amt;
+    G.money += amt; // 공유 지갑 (멀티에선 스냅샷으로 모두에게 반영)
     G.killCount++;
     if (amt > 0) G.pops.push({ x: z.x, y: z.y, h: 18, t: 0.9, txt: "+" + amt + "원", col: "#ffd76b" });
-    if (Math.random() < 0.15) { const types = ["wood", "stone", "iron"]; const ty = types[(Math.random() * 3) | 0];
+    if (!G.mp.on && Math.random() < 0.15) { const types = ["wood", "stone", "iron"]; const ty = types[(Math.random() * 3) | 0];
       G.drops.push({ x: z.x, y: z.y, type: ty, bob: Math.random() * 6.3 }); }
     for (let i = 0; i < 12; i++) { const a = Math.random() * 6.3, s = rand(40, 160);
       G.parts.push({ x: z.x, y: z.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.3, 0.6), max: 0.6, r: rand(2, 4), col: def.color, h: 14 }); }
@@ -858,10 +865,20 @@
     for (const pid in G.netPlayers) { const np = G.netPlayers[pid]; P.push({ id: pid, x: np.x, y: np.y, a: np.a, w: np.w, g: np.g, hp: np.hp, n: np.n, dead: np.dead }); }
     const Z = [];
     for (const z of G.zombies) Z.push([z.id || 0, Math.round(z.x), Math.round(z.y), ZIDX[z.type] || 0, Math.round(z.hp)]);
-    return { t: "snap", P: P, Z: Z, D: [G.day, PIDX[G.phase], +G.timer.toFixed(1)] };
+    return { t: "snap", P: P, Z: Z, D: [G.day, PIDX[G.phase], +G.timer.toFixed(1)],
+      E: [G.money, G.res.wood, G.res.stone, G.res.iron, G.ammoStock, G.sharedGun || ""] };
   }
   function applySnap(d) {
     if (d.D) { G.day = d.D[0]; G.phase = PHASES[d.D[1]] || "day"; G.timer = d.D[2]; }
+    if (d.E) { // shared economy mirror
+      G.money = d.E[0]; G.res.wood = d.E[1]; G.res.stone = d.E[2]; G.res.iron = d.E[3]; G.ammoStock = d.E[4];
+      const sg = d.E[5];
+      if (sg && sg !== G.sharedGun && G.player) {
+        G.sharedGun = sg; G.player.gun = sg;
+        if (G.player.weapon !== "knife") G.player.weapon = "gun";
+        G.player.ammo = GUN_BY_ID[sg].mag === Infinity ? Infinity : GUN_BY_ID[sg].mag;
+      }
+    }
     const prev = {}; for (const z of G.zombies) prev[z.id] = z;
     const zs = [];
     for (const a of d.Z) {
@@ -894,6 +911,16 @@
       else if (d.t === "dmg" && d.q) { const map = {}; for (const z of G.zombies) map[z.id] = z;
         for (const pair of d.q) { const z = map[pair[0]]; if (z) { z.hp -= pair[1]; z.lastHitBy = peer; z.hitFlash = 0.08;
           if (z.hp <= 0) { const idx = G.zombies.indexOf(z); if (idx >= 0) killZombie(z, idx); } } } }
+      else if (d.t === "act") { // shared-wallet purchase from a client
+        const k = d.k;
+        if (k === "gun") { const g = GUN_BY_ID[d.id]; if (g && G.money >= g.price) { G.money -= g.price; equipGunAll(d.id); } }
+        else if (k === "ammo") { if (G.money >= TURRET_AMMO.price) { G.money -= TURRET_AMMO.price; G.ammoStock += TURRET_AMMO.amount; } }
+        else if (k === "hire") { const h = HIRE_BY_ID[d.id]; if (h && G.money >= h.price) G.money -= h.price; }
+        else if (k === "craft") { const b = BUILD_BY_ID[d.id]; if (b && canAffordRes(b)) { G.res.iron -= b.iron; G.res.wood -= b.wood; G.res.stone -= b.stone; } }
+        else if (k === "harv") { if (d.r && G.res[d.r] !== undefined) G.res[d.r] += (d.n || 1); }
+        else if (k === "repair") { if (G.res.wood >= 3) G.res.wood -= 3; }
+        else if (k === "refill") { G.ammoStock = Math.max(0, G.ammoStock - (d.amt || 200)); }
+      }
     } else {
       if (d.t === "snap") applySnap(d);
       else if (d.t === "init" && !G.started) { G.started = true; clientStart(d); }
@@ -1449,7 +1476,7 @@
   function craftBuild(id) {
     const b = BUILD_BY_ID[id]; if (!canAffordRes(b)) return;
     if (b.place && G.carried) return;
-    G.res.iron -= b.iron; G.res.wood -= b.wood; G.res.stone -= b.stone;
+    if (mpClient()) netAct({ k: "craft", id: id }); else { G.res.iron -= b.iron; G.res.wood -= b.wood; G.res.stone -= b.stone; }
     if (b.place) G.carried = id; else G.inv.torch++;
   }
   function placeCarried() {
@@ -1462,14 +1489,15 @@
     G.carried = null;
   }
   function hirePerson(id) {
-    const h = HIRE_BY_ID[id]; if (G.money < h.price || G.allies.length >= 30) return;
-    G.money -= h.price; const p = G.player, a = rand(0, 6.3);
+    const h = HIRE_BY_ID[id]; if (!h || G.money < h.price || G.allies.length >= 30) return;
+    if (mpClient()) netAct({ k: "hire", id: id }); else G.money -= h.price;
+    const p = G.player, a = rand(0, 6.3);
     G.allies.push({ id, kind: h.kind, name: h.name, color: h.color, gun: h.gun, dmg: h.dmg || 0, cdTime: h.cd || 0,
       x: p.x + Math.cos(a) * 36, y: p.y + Math.sin(a) * 36, r: 12, hp: h.hp, max: h.hp, cd: 0, hurtCd: 0, face: 0 });
   }
-  function buyTurretAmmo() { if (G.money < TURRET_AMMO.price) return; G.money -= TURRET_AMMO.price; G.ammoStock += TURRET_AMMO.amount; }
-  function refillTurret(t) { if (!t) return; const amt = Math.min(G.ammoStock, 200); t.ammo += amt; G.ammoStock -= amt; }
-  function repairWall(w) { if (!w || G.res.wood < 3 || w.hp >= w.max) return; G.res.wood -= 3; w.hp = Math.min(w.max, w.hp + 100); }
+  function buyTurretAmmo() { if (G.money < TURRET_AMMO.price) return; if (mpClient()) { netAct({ k: "ammo" }); return; } G.money -= TURRET_AMMO.price; G.ammoStock += TURRET_AMMO.amount; }
+  function refillTurret(t) { if (!t || G.ammoStock <= 0) return; const amt = Math.min(G.ammoStock, 200); if (mpClient()) netAct({ k: "refill", amt: amt }); else G.ammoStock -= amt; t.ammo += amt; }
+  function repairWall(w) { if (!w || G.res.wood < 3 || w.hp >= w.max) return; if (mpClient()) netAct({ k: "repair" }); else G.res.wood -= 3; w.hp = Math.min(w.max, w.hp + 100); }
 
   // ----- context panel -----
   function nearestStation() { const p = G.player; let best = null, bd = Infinity;
