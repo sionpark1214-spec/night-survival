@@ -154,7 +154,7 @@
         try { this.leave(); } catch (e) {}
         this.isHost = isHost; this.conns = []; this.hostConn = null;
         if (isHost) {
-          const peer = new Peer(PID(code)); this.peer = peer;
+          const peer = new Peer(PID(code)); this.peer = peer; this.myId = "host";
           peer.on("open", () => onReady && onReady(code));
           peer.on("error", (e) => onError && onError(String(e && e.type ? e.type : e)));
           peer.on("connection", (conn) => {
@@ -165,7 +165,8 @@
         } else {
           const peer = new Peer(); this.peer = peer;
           peer.on("error", (e) => onError && onError(String(e && e.type ? e.type : e)));
-          peer.on("open", () => {
+          peer.on("open", (id) => {
+            this.myId = id;
             const conn = peer.connect(PID(code), { reliable: true }); this.hostConn = conn;
             conn.on("open", () => { onReady && onReady(code); onJoin && onJoin(PID(code)); });
             conn.on("data", (d) => onState && onState(PID(code), d));
@@ -177,6 +178,7 @@
         if (this.isHost) { for (const c of this.conns) { if (c && c.open) { try { c.send(d); } catch (e) {} } } }
         else if (this.hostConn && this.hostConn.open) { try { this.hostConn.send(d); } catch (e) {} }
       },
+      sendTo(peerId, d) { for (const c of this.conns) { if (c && c.peer === peerId && c.open) { try { c.send(d); } catch (e) {} return; } } },
       leave() { try { this.peer && this.peer.destroy(); } catch (e) {} this.peer = null; this.conns = []; this.hostConn = null; }
     };
   })();
@@ -392,8 +394,12 @@
     nodes: [],
     mp: { on: false, isHost: false, code: null, name: null },
     remotes: {},
+    zid: 0, netPlayers: {}, dmgQ: [], snap: null, started: false,
   };
   function rand(a, b) { return a + Math.random() * (b - a); }
+  // multiplayer role: host = authoritative world (also single-player). client = receives world from host.
+  function mpHost() { return !G.mp.on || G.mp.isHost; }
+  function mpClient() { return G.mp.on && !G.mp.isHost; }
 
   // ---------- Houses ----------
   function makeHouse(x, y, w, h, doorSide, opts) {
@@ -503,6 +509,12 @@
     $("hud").hidden = false; $("touch").hidden = false;
   }
   function die(reason) {
+    if (G.mp.on && G.player) { // 멀티: 임시로 캠프파이어 부활 (정식 부활/메디킷은 3단계)
+      const c = G.campfire;
+      G.player.hp = 100; G.player.temp = 100; G.player.x = c.x; G.player.y = c.y + 30; G.player.hurtFlash = 0.3;
+      G.pops.push({ x: c.x, y: c.y, h: 40, t: 1.2, txt: "부활!", col: "#9fe8ff" });
+      return;
+    }
     G.state = "dead"; clearSticks();
     $("panel").className = ""; $("panelTitle").className = ""; $("placeBtn").style.display = "none"; $("inv").hidden = true;
     $("hud").hidden = true; $("shop").hidden = true; $("touch").hidden = true;
@@ -530,7 +542,7 @@
     const def = ZT[type]; const p = G.player;
     const a = Math.random() * Math.PI * 2;
     const dist = Math.max(W, H) / 2 + rand(220, 460);
-    G.zombies.push({ type, x: p.x + Math.cos(a) * dist, y: p.y + Math.sin(a) * dist,
+    G.zombies.push({ id: ++G.zid, type, x: p.x + Math.cos(a) * dist, y: p.y + Math.sin(a) * dist,
       hp: def.hp, max: def.hp, r: def.r, spd: def.spd, face: a + Math.PI, atkCd: 0, burn: 0, hitFlash: 0, wob: Math.random() * 6.3 });
   }
 
@@ -800,11 +812,16 @@
   function damageZombie(z, dmg) {
     z.hp -= dmg; z.hitFlash = 0.08;
     G.pops.push({ x: z.x, y: z.y, h: z.r + 16, t: 0.6, txt: Math.round(dmg), col: "#fff" });
+    if (mpClient() && z.id) G.dmgQ.push([z.id, dmg]);
+    else if (G.mp.on) z.lastHitBy = "host";
   }
   function killZombie(z, idx, mult) {
+    if (mpClient()) { G.zombies.splice(idx, 1); return; } // host is authoritative for kills
     const def = ZT[z.type];
     const amt = Math.round(def.reward * (mult || 1));
-    G.money += amt; G.killCount++;
+    if (G.mp.on && z.lastHitBy && z.lastHitBy !== "host" && window.NET) window.NET.sendTo(z.lastHitBy, { t: "rew", a: amt });
+    else G.money += amt;
+    G.killCount++;
     if (amt > 0) G.pops.push({ x: z.x, y: z.y, h: 18, t: 0.9, txt: "+" + amt + "원", col: "#ffd76b" });
     if (Math.random() < 0.15) { const types = ["wood", "stone", "iron"]; const ty = types[(Math.random() * 3) | 0];
       G.drops.push({ x: z.x, y: z.y, type: ty, bob: Math.random() * 6.3 }); }
@@ -829,15 +846,72 @@
   }
 
   // ---------- Loop ----------
+  // ===== Multiplayer sync (stage 2: shared map/clock/zombies) =====
+  const ZTYPES = ["normal", "fast", "suicide", "poison", "ice", "split", "splitling", "miniboss", "boss"];
+  const ZIDX = {}; ZTYPES.forEach((t, i) => ZIDX[t] = i);
+  const PHASES = ["day", "night", "morning"];
+  const PIDX = { day: 0, night: 1, morning: 2 };
+  const NODET = ["tree", "rock"];
+  function buildSnap() {
+    const p = G.player;
+    const P = [{ id: "host", x: Math.round(p.x), y: Math.round(p.y), a: +p.ang.toFixed(2), w: p.weapon, g: p.gun || "", hp: Math.round(p.hp), n: G.mp.name, dead: 0 }];
+    for (const pid in G.netPlayers) { const np = G.netPlayers[pid]; P.push({ id: pid, x: np.x, y: np.y, a: np.a, w: np.w, g: np.g, hp: np.hp, n: np.n, dead: np.dead }); }
+    const Z = [];
+    for (const z of G.zombies) Z.push([z.id || 0, Math.round(z.x), Math.round(z.y), ZIDX[z.type] || 0, Math.round(z.hp)]);
+    return { t: "snap", P: P, Z: Z, D: [G.day, PIDX[G.phase], +G.timer.toFixed(1)] };
+  }
+  function applySnap(d) {
+    if (d.D) { G.day = d.D[0]; G.phase = PHASES[d.D[1]] || "day"; G.timer = d.D[2]; }
+    const prev = {}; for (const z of G.zombies) prev[z.id] = z;
+    const zs = [];
+    for (const a of d.Z) {
+      const type = ZTYPES[a[3]] || "normal", def = ZT[type], ex = prev[a[0]];
+      zs.push({ id: a[0], type, x: a[1], y: a[2], hp: a[4], max: def.hp, r: def.r,
+        face: ex ? ex.face : 0, hitFlash: ex ? ex.hitFlash : 0, wob: ex ? ex.wob : Math.random() * 6.3, burn: 0 });
+    }
+    G.zombies = zs;
+    const myId = window.NET ? window.NET.myId : null;
+    const fresh = {};
+    for (const pl of d.P) { if (pl.id === myId) continue; fresh[pl.id] = { x: pl.x, y: pl.y, ang: pl.a, weapon: pl.w, gun: pl.g, hp: pl.hp, name: pl.n, dead: pl.dead, t: performance.now() }; }
+    G.remotes = fresh;
+  }
+  function mpInitMsg() {
+    const N = G.nodes.map((n) => [NODET.indexOf(n.type), Math.round(n.x), Math.round(n.y), n.hp]);
+    return { t: "init", N: N, D: [G.day, PIDX[G.phase], +G.timer.toFixed(1)] };
+  }
+  function sendInit() { if (window.NET) window.NET.send(mpInitMsg()); }
+  function clientStart(d) {
+    startGame();
+    if (d.N) G.nodes = d.N.map((a) => ({ type: NODET[a[0]] || "tree", x: a[1], y: a[2], hp: a[3], cd: 0, shake: 0 }));
+    if (d.D) { G.day = d.D[0]; G.phase = PHASES[d.D[1]] || "day"; G.timer = d.D[2]; }
+    $("lobby").hidden = true;
+  }
+  function mpOnMessage(peer, d) {
+    if (!d || !d.t) return;
+    if (mpHost()) {
+      if (d.t === "in") { mpPeers[peer] = true; G.netPlayers[peer] = { x: d.x, y: d.y, a: d.a, w: d.w, g: d.g, hp: d.hp, tp: d.tp, n: d.n, dead: d.dead };
+        G.remotes[peer] = { x: d.x, y: d.y, ang: d.a, weapon: d.w, gun: d.g, hp: d.hp, name: d.n, dead: d.dead, t: performance.now() }; }
+      else if (d.t === "dmg" && d.q) { const map = {}; for (const z of G.zombies) map[z.id] = z;
+        for (const pair of d.q) { const z = map[pair[0]]; if (z) { z.hp -= pair[1]; z.lastHitBy = peer; z.hitFlash = 0.08;
+          if (z.hp <= 0) { const idx = G.zombies.indexOf(z); if (idx >= 0) killZombie(z, idx); } } } }
+    } else {
+      if (d.t === "snap") applySnap(d);
+      else if (d.t === "init" && !G.started) { G.started = true; clientStart(d); }
+      else if (d.t === "rew") { G.money += d.a; }
+    }
+  }
   let last = 0, lastNet = 0;
   function netTick() {
-    if (!G.mp.on || !window.NET || !G.player) return;
+    if (!G.mp.on || !window.NET) return;
     const now = performance.now();
-    if (now - lastNet > 66) {
-      lastNet = now;
-      const p = G.player;
-      window.NET.send({ x: Math.round(p.x), y: Math.round(p.y), a: +p.ang.toFixed(2),
-        w: p.weapon, g: p.gun || "", hp: Math.round(p.hp), tp: Math.round(p.temp), n: G.mp.name, dead: G.state === "dead" ? 1 : 0 });
+    if (mpClient()) {
+      if (G.player && G.state === "playing" && now - lastNet > 66) {
+        lastNet = now; const p = G.player;
+        window.NET.send({ t: "in", x: Math.round(p.x), y: Math.round(p.y), a: +p.ang.toFixed(2), w: p.weapon, g: p.gun || "", hp: Math.round(p.hp), tp: Math.round(p.temp), n: G.mp.name, dead: 0 });
+      }
+      if (G.dmgQ.length) window.NET.send({ t: "dmg", q: G.dmgQ.splice(0, G.dmgQ.length) });
+    } else if (G.mp.on && G.player && G.state === "playing" && now - lastNet > 80) {
+      lastNet = now; window.NET.send(buildSnap());
     }
     for (const id in G.remotes) if (now - G.remotes[id].t > 6000) delete G.remotes[id];
   }
@@ -897,50 +971,64 @@
     else { p.temp -= (G.torch > 0 ? CFG.tempDrain * 0.3 : CFG.tempDrain) * dt; }
     if (p.temp <= 0) { p.temp = 0; return die("온도가 0이 되어 얼어붙었다…"); }
 
-    G.timer -= dt;
-    if (G.phase === "day" && G.timer <= 0) beginNight();
-    else if (G.phase === "night" && G.timer <= 0) { G.phase = "morning"; G.fleeT = 2.2; for (const z of G.zombies) z.flee = true; }
-    if (G.phase === "morning") {
-      G.fleeT -= dt;
-      if (G.fleeT <= 0) {
-        G.zombies = [];
-        // miners deliver resources, sometimes die
-        for (let i = G.allies.length - 1; i >= 0; i--) { const a = G.allies[i];
-          if (a.kind === "miner") {
-            if (Math.random() < 0.2) { G.pops.push({ x: a.x, y: a.y, h: 20, t: 1.2, txt: "광부 사망", col: "#ff6b8a" }); G.allies.splice(i, 1); }
-            else { G.res.stone += 10; G.res.wood += 10; }
-          } }
-        G.day++; G.phase = "day"; G.timer = CFG.dayBase + (G.day - 1) * CFG.dayInc;
+    if (mpHost()) {
+      G.timer -= dt;
+      if (G.phase === "day" && G.timer <= 0) beginNight();
+      else if (G.phase === "night" && G.timer <= 0) { G.phase = "morning"; G.fleeT = 2.2; for (const z of G.zombies) z.flee = true; }
+      if (G.phase === "morning") {
+        G.fleeT -= dt;
+        if (G.fleeT <= 0) {
+          G.zombies = [];
+          for (let i = G.allies.length - 1; i >= 0; i--) { const a = G.allies[i];
+            if (a.kind === "miner") {
+              if (Math.random() < 0.2) { G.pops.push({ x: a.x, y: a.y, h: 20, t: 1.2, txt: "광부 사망", col: "#ff6b8a" }); G.allies.splice(i, 1); }
+              else { G.res.stone += 10; G.res.wood += 10; }
+            } }
+          G.day++; G.phase = "day"; G.timer = CFG.dayBase + (G.day - 1) * CFG.dayInc;
+        }
       }
-    }
-
-    if (G.phase === "night" && G.spawnQueue.length) {
-      G.spawnTimer -= dt;
-      if (G.spawnTimer <= 0) { spawnZombie(G.spawnQueue.shift()); G.spawnTimer = Math.max(0.25, (CFG.night * 0.7) / Math.max(1, (6 + G.day * 3))); }
-    }
-
-    for (let i = G.zombies.length - 1; i >= 0; i--) {
-      const z = G.zombies[i], def = ZT[z.type];
-      z.wob += dt * 5;
-      if (z.hitFlash > 0) z.hitFlash -= dt;
-      if (z.burn > 0) { z.burn -= dt; z.hp -= 100 * dt; }
-      let tx, ty;
-      if (z.flee) { tx = z.x + (z.x - p.x); ty = z.y + (z.y - p.y); } else { tx = p.x; ty = p.y; }
-      let dx = tx - z.x, dy = ty - z.y; const d = Math.hypot(dx, dy) || 1; dx /= d; dy /= d;
-      const sp = z.flee ? z.spd * 2.4 : z.spd;
-      z.face = Math.atan2(p.y - z.y, p.x - z.x);
-      z.x += dx * sp * dt; z.y += dy * sp * dt;
-      if (!z.flee) resolve(z, z.r);
-      if (z.atkCd > 0) z.atkCd -= dt;
-      if (!z.flee && Math.hypot(p.x - z.x, p.y - z.y) < p.r + z.r) {
-        if (def.explode) { explode(z.x, z.y, 90, def.dmgHp); G.zombies.splice(i, 1); continue; }
-        if (z.atkCd <= 0) {
-          z.atkCd = 0.7;
-          if (def.dmgTemp) { p.temp -= def.dmgTemp; if (p.temp <= 0) { p.temp = 0; die("얼음좀비에게 얼어붙었다…"); } }
+      if (G.phase === "night" && G.spawnQueue.length) {
+        G.spawnTimer -= dt;
+        if (G.spawnTimer <= 0) { spawnZombie(G.spawnQueue.shift()); G.spawnTimer = Math.max(0.25, (CFG.night * 0.7) / Math.max(1, (6 + G.day * 3))); }
+      }
+      for (let i = G.zombies.length - 1; i >= 0; i--) {
+        const z = G.zombies[i], def = ZT[z.type];
+        z.wob += dt * 5;
+        if (z.hitFlash > 0) z.hitFlash -= dt;
+        if (z.burn > 0) { z.burn -= dt; z.hp -= 100 * dt; }
+        let tx, ty;
+        if (z.flee) { tx = z.x + (z.x - p.x); ty = z.y + (z.y - p.y); }
+        else { tx = p.x; ty = p.y; let bd = Math.hypot(p.x - z.x, p.y - z.y);
+          for (const pid in G.netPlayers) { const np = G.netPlayers[pid]; if (np.dead) continue; const dd = Math.hypot(np.x - z.x, np.y - z.y); if (dd < bd) { bd = dd; tx = np.x; ty = np.y; } } }
+        let dx = tx - z.x, dy = ty - z.y; const d = Math.hypot(dx, dy) || 1; dx /= d; dy /= d;
+        const sp = z.flee ? z.spd * 2.4 : z.spd;
+        z.face = Math.atan2(ty - z.y, tx - z.x);
+        z.x += dx * sp * dt; z.y += dy * sp * dt;
+        if (!z.flee) resolve(z, z.r);
+        if (z.atkCd > 0) z.atkCd -= dt;
+        if (!z.flee && Math.hypot(p.x - z.x, p.y - z.y) < p.r + z.r) {
+          if (def.explode) { explode(z.x, z.y, 90, def.dmgHp); G.zombies.splice(i, 1); continue; }
+          if (z.atkCd <= 0) {
+            z.atkCd = 0.7;
+            if (def.dmgTemp) { p.temp -= def.dmgTemp; if (p.temp <= 0) { p.temp = 0; die("얼음좀비에게 얼어붙었다…"); } }
+            if (def.dmgHp) hurtPlayer(def.dmgHp);
+          }
+        }
+        if (z.hp <= 0) { killZombie(z, i); continue; }
+      }
+    } else {
+      // client: zombies are set from host snapshot — only own contact + visual decay
+      if (G._hurtCd > 0) G._hurtCd -= dt;
+      for (const z of G.zombies) {
+        if (z.hitFlash > 0) z.hitFlash -= dt;
+        z.wob = (z.wob || 0) + dt * 5;
+        z.face = Math.atan2(p.y - z.y, p.x - z.x);
+        if (Math.hypot(p.x - z.x, p.y - z.y) < p.r + z.r && !(G._hurtCd > 0)) {
+          const def = ZT[z.type]; G._hurtCd = 0.7;
+          if (def.dmgTemp) { p.temp -= def.dmgTemp; if (p.temp <= 0) { p.temp = 0; return die("얼음좀비에게 얼어붙었다…"); } }
           if (def.dmgHp) hurtPlayer(def.dmgHp);
         }
       }
-      if (z.hp <= 0) { killZombie(z, i); continue; }
     }
 
     for (let i = G.pools.length - 1; i >= 0; i--) {
@@ -1462,13 +1550,14 @@
   function connectRoom(code, isHost) {
     if (!window.NET) { $("lobbyMsg").textContent = "네트워크 로드 실패: " + (window.NET_ERR || "알 수 없음") + " (새로고침 해봐)"; return; }
     G.mp.name = (($("nameInput").value || "").trim()) || randName();
-    G.mp.on = true; G.mp.isHost = isHost; G.mp.code = code; G.remotes = {}; mpPeers = {};
+    G.mp.on = true; G.mp.isHost = isHost; G.mp.code = code; G.remotes = {}; mpPeers = {}; G.netPlayers = {}; G.started = false;
     $("lobbyMsg").textContent = "연결 중… ⏳";
     window.NET.connect(code, isHost,
-      (peer, d) => { mpPeers[peer] = true; G.remotes[peer] = { x: d.x, y: d.y, ang: d.a, weapon: d.w, gun: d.g, hp: d.hp, temp: d.tp, name: d.n, dead: d.dead, t: performance.now() }; },
-      (peer) => { delete mpPeers[peer]; delete G.remotes[peer]; updateRoomStatus(); },
-      (peer) => { mpPeers[peer] = true; updateRoomStatus(); },
-      (rmcode) => { $("lobbyMsg").textContent = ""; $("lobbyMain").hidden = true; $("lobbyRoom").hidden = false; $("roomCode").textContent = rmcode; updateRoomStatus(); },
+      (peer, d) => mpOnMessage(peer, d),
+      (peer) => { delete mpPeers[peer]; delete G.netPlayers[peer]; delete G.remotes[peer]; updateRoomStatus(); },
+      (peer) => { mpPeers[peer] = true; updateRoomStatus(); if (G.mp.isHost && G.started && window.NET) window.NET.sendTo(peer, mpInitMsg()); },
+      (rmcode) => { $("lobbyMsg").textContent = ""; $("lobbyMain").hidden = true; $("lobbyRoom").hidden = false; $("roomCode").textContent = rmcode; updateRoomStatus();
+        if (!isHost) { $("mpStartBtn").textContent = "방장이 시작하길 기다리는 중…"; $("mpStartBtn").disabled = true; } else { $("mpStartBtn").textContent = "게임 시작"; $("mpStartBtn").disabled = false; } },
       (err) => {
         let msg = "연결 실패: " + err;
         if (/unavailable-id|taken/i.test(err)) msg = "그 방 코드는 이미 쓰는 중이야 — [방 만들기]로 새 코드 받아봐";
@@ -1480,8 +1569,11 @@
   $("coopBtn").onclick = () => { ensureAudio(); $("title").hidden = true; $("lobby").hidden = false; $("lobbyMain").hidden = false; $("lobbyRoom").hidden = true; $("lobbyMsg").textContent = ""; };
   $("createBtn").onclick = () => connectRoom(genCode(), true);
   $("joinBtn").onclick = () => { const c = (($("codeInput").value || "").trim().toUpperCase()); if (c.length < 3) { $("lobbyMsg").textContent = "방 코드를 입력해줘"; return; } connectRoom(c, false); };
-  $("mpStartBtn").onclick = () => { ensureAudio(); $("lobby").hidden = true; startGame(); };
-  $("lobbyBack").onclick = () => { if (window.NET) window.NET.leave(); G.mp.on = false; G.remotes = {}; $("lobby").hidden = true; $("title").hidden = false; };
+  $("mpStartBtn").onclick = () => {
+    if (!G.mp.isHost) return; // clients wait for host
+    ensureAudio(); $("lobby").hidden = true; startGame(); G.started = true; sendInit();
+  };
+  $("lobbyBack").onclick = () => { if (window.NET) window.NET.leave(); G.mp.on = false; G.remotes = {}; G.netPlayers = {}; G.started = false; $("lobby").hidden = true; $("title").hidden = false; };
 
   // ---------- Flow ----------
   $("startBtn").onclick = () => { ensureAudio(); G.mp.on = false; startGame(); };
