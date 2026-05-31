@@ -952,12 +952,12 @@
     if (!G.mp.on || !window.NET) return;
     const now = performance.now();
     if (mpClient()) {
-      if (G.player && G.state === "playing" && now - lastNet > 66) {
+      if (G.player && G.started && now - lastNet > 66) {
         lastNet = now; const p = G.player;
         window.NET.send({ t: "in", x: Math.round(p.x), y: Math.round(p.y), a: +p.ang.toFixed(2), w: p.weapon, g: p.gun || "", hp: Math.round(p.hp), tp: Math.round(p.temp), n: G.mp.name, dead: p.downed ? 1 : 0 });
       }
       if (G.dmgQ.length) window.NET.send({ t: "dmg", q: G.dmgQ.splice(0, G.dmgQ.length) });
-    } else if (G.mp.on && G.player && G.state === "playing" && now - lastNet > 80) {
+    } else if (G.mp.on && G.player && G.started && now - lastNet > 80) {
       lastNet = now; window.NET.send(buildSnap());
     }
     for (const id in G.remotes) if (now - G.remotes[id].t > 6000) delete G.remotes[id];
@@ -1067,7 +1067,8 @@
         if (z.hp <= 0) { killZombie(z, i); continue; }
       }
     } else {
-      // client: zombies are set from host snapshot — only own contact + visual decay
+      // client: zombies/clock from host snapshot — predict timer locally for smoothness, contact + visual
+      if (G.timer > 0) G.timer -= dt;
       if (G._hurtCd > 0) G._hurtCd -= dt;
       for (const z of G.zombies) {
         if (z.hitFlash > 0) z.hitFlash -= dt;
@@ -1587,7 +1588,7 @@
   }
 
   // ----- inventory -----
-  function openInv() { if (G.state !== "playing") return; G.state = "inventory"; G.mouse.down = false; clearSticks(); buildInv(); $("inv").hidden = false; }
+  function openInv() { if (G.state !== "playing") return; G.mouse.down = false; clearSticks(); if (!G.mp.on) G.state = "inventory"; buildInv(); $("inv").hidden = false; }
   function buildInv() {
     const list = $("invList"); list.innerHTML = "";
     const rows = [["🪵 나무", G.res.wood], ["🪨 돌", G.res.stone], ["🔩 철", G.res.iron], ["🔫 터렛 탄약", G.ammoStock]];
@@ -1605,7 +1606,7 @@
     mb.onclick = () => { if (useMedkit()) { closeInv(); } };
     mr.appendChild(mb); list.appendChild(mr);
   }
-  function closeInv() { if (G.state === "inventory") { G.state = "playing"; $("inv").hidden = true; } }
+  function closeInv() { $("inv").hidden = true; if (G.state === "inventory") G.state = "playing"; }
   $("invBtn").onclick = openInv; $("invClose").onclick = closeInv;
   $("placeBtn").onclick = placeCarried;
 
