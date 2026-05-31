@@ -148,14 +148,24 @@
   (function () {
     if (typeof Peer === "undefined") { window.NET_ERR = "peerjs 로드 실패 (인터넷 확인)"; return; }
     const PID = (code) => "bamsv-" + code;
+    // STUN + free TURN relay (OpenRelay) so it works across different networks/carriers
+    const PEER_OPTS = { config: { iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+      { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+      { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
+    ] } };
     window.NET = {
-      peer: null, isHost: false, conns: [], hostConn: null,
+      peer: null, isHost: false, conns: [], hostConn: null, _timer: null,
       connect(code, isHost, onState, onLeave, onJoin, onReady, onError) {
         try { this.leave(); } catch (e) {}
         this.isHost = isHost; this.conns = []; this.hostConn = null;
+        let ready = false;
+        const ok = (c) => { ready = true; if (this._timer) { clearTimeout(this._timer); this._timer = null; } onReady && onReady(c); };
+        this._timer = setTimeout(() => { if (!ready) onError && onError("연결 시간초과 — 다시 시도하거나 둘 다 새로고침해줘"); }, 22000);
         if (isHost) {
-          const peer = new Peer(PID(code)); this.peer = peer; this.myId = "host";
-          peer.on("open", () => onReady && onReady(code));
+          const peer = new Peer(PID(code), PEER_OPTS); this.peer = peer; this.myId = "host";
+          peer.on("open", () => ok(code));
           peer.on("error", (e) => onError && onError(String(e && e.type ? e.type : e)));
           peer.on("connection", (conn) => {
             conn.on("open", () => { this.conns.push(conn); onJoin && onJoin(conn.peer); });
@@ -163,12 +173,12 @@
             conn.on("close", () => { this.conns = this.conns.filter((c) => c !== conn); onLeave && onLeave(conn.peer); });
           });
         } else {
-          const peer = new Peer(); this.peer = peer;
+          const peer = new Peer(PEER_OPTS); this.peer = peer;
           peer.on("error", (e) => onError && onError(String(e && e.type ? e.type : e)));
           peer.on("open", (id) => {
             this.myId = id;
             const conn = peer.connect(PID(code), { reliable: true }); this.hostConn = conn;
-            conn.on("open", () => { onReady && onReady(code); onJoin && onJoin(PID(code)); });
+            conn.on("open", () => { ok(code); onJoin && onJoin(PID(code)); });
             conn.on("data", (d) => onState && onState(PID(code), d));
             conn.on("close", () => onLeave && onLeave(PID(code)));
           });
@@ -179,7 +189,7 @@
         else if (this.hostConn && this.hostConn.open) { try { this.hostConn.send(d); } catch (e) {} }
       },
       sendTo(peerId, d) { for (const c of this.conns) { if (c && c.peer === peerId && c.open) { try { c.send(d); } catch (e) {} return; } } },
-      leave() { try { this.peer && this.peer.destroy(); } catch (e) {} this.peer = null; this.conns = []; this.hostConn = null; }
+      leave() { if (this._timer) { clearTimeout(this._timer); this._timer = null; } try { this.peer && this.peer.destroy(); } catch (e) {} this.peer = null; this.conns = []; this.hostConn = null; }
     };
   })();
 </script>
