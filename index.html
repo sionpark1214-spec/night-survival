@@ -1211,6 +1211,16 @@
         fxCtx.lineWidth = 3; fxCtx.strokeStyle = "rgba(0,0,0,0.6)"; fxCtx.strokeText(nm, sx, sy);
         fxCtx.fillStyle = d.dead ? "#ff8a9a" : "#9fe8ff"; fxCtx.fillText(nm, sx, sy);
       }
+      // my own marker
+      if (G.player) {
+        _vproj.set(G.player.x, 58, G.player.y); _vproj.project(camera);
+        if (_vproj.z <= 1) {
+          const sx = (_vproj.x * 0.5 + 0.5) * W, sy = (-_vproj.y * 0.5 + 0.5) * H;
+          const nm = "▼ 나" + (G.mp.name ? " (" + G.mp.name + ")" : "");
+          fxCtx.font = "bold 14px sans-serif"; fxCtx.lineWidth = 3; fxCtx.strokeStyle = "rgba(0,0,0,0.7)";
+          fxCtx.strokeText(nm, sx, sy); fxCtx.fillStyle = "#ffe07a"; fxCtx.fillText(nm, sx, sy);
+        }
+      }
     }
   }
 
