@@ -143,9 +143,22 @@
 <canvas id="fx"></canvas>
 
 <script type="module">
-  // P2P networking (Trystero) — serverless, room-code based
-  try {
-    const { joinRoom, selfId } = await import('https://esm.sh/trystero');
+  // P2P networking (Trystero) — serverless, room-code based. Try several strategies for reliability.
+  async function loadNet() {
+    const urls = [
+      'https://esm.sh/trystero/nostr',
+      'https://esm.sh/trystero/mqtt',
+      'https://esm.sh/trystero'
+    ];
+    for (const url of urls) {
+      try { const m = await import(url); if (m && m.joinRoom) { window.NET_STRAT = url; return m; } }
+      catch (e) { window.NET_ERR = (url.split('/').pop()) + ": " + String(e); }
+    }
+    return null;
+  }
+  const mod = await loadNet();
+  if (mod && mod.joinRoom) {
+    const { joinRoom, selfId } = mod;
     window.NET = {
       selfId, _send: null, room: null,
       connect(code, onState, onLeave, onJoin) {
@@ -159,8 +172,12 @@
       send(d) { if (this._send) { try { this._send(d); } catch (e) {} } },
       leave() { try { this.room && this.room.leave(); } catch (e) {} this._send = null; this.room = null; }
     };
+    window.NET_ERR = "";
     window.dispatchEvent(new Event("net-ready"));
-  } catch (e) { window.NET_ERR = String(e); console.error("net load failed", e); }
+  } else {
+    window.NET_ERR = window.NET_ERR || "load failed";
+    window.dispatchEvent(new Event("net-ready"));
+  }
 </script>
 
 <div id="hud" hidden>
@@ -1441,7 +1458,13 @@
     $("roomStatus").textContent = "접속 인원: " + n + "명" + (G.mp.isHost ? " (방장)" : "");
   }
   function connectRoom(code, isHost) {
-    if (!window.NET) { $("lobbyMsg").textContent = window.NET_ERR ? "네트워크 로드 실패 (인터넷 확인)" : "네트워크 준비 중… 잠시 후 다시 눌러줘"; return; }
+    if (!window.NET) {
+      if (window.NET_ERR) { $("lobbyMsg").textContent = "네트워크 로드 실패: " + window.NET_ERR + " (새로고침 해봐)"; return; }
+      $("lobbyMsg").textContent = "네트워크 불러오는 중… 잠깐만 기다려줘 ⏳";
+      window.addEventListener("net-ready", () => connectRoom(code, isHost), { once: true });
+      return;
+    }
+    if (window.NET_ERR) { $("lobbyMsg").textContent = "네트워크 로드 실패: " + window.NET_ERR + " (새로고침 해봐)"; return; }
     G.mp.name = (($("nameInput").value || "").trim()) || randName();
     G.mp.on = true; G.mp.isHost = isHost; G.mp.code = code; G.remotes = {}; mpPeers = {};
     try {
