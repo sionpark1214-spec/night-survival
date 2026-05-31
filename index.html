@@ -179,15 +179,19 @@
           const peer = new Peer(PEER_OPTS); this.peer = peer;
           peer.on("disconnected", () => { try { peer.reconnect(); } catch (e) {} });
           peer.on("error", (e) => { if (!ready) onError && onError(String(e && e.type ? e.type : e)); });
-          let reconnecting = false;
+          let reconnectScheduled = false;
+          function scheduleReconnect() {
+            if (self._left || reconnectScheduled) return;
+            reconnectScheduled = true;
+            setTimeout(() => { reconnectScheduled = false;
+              if (!self._left && self.peer && !self.peer.destroyed) { try { openConn(); } catch (e) { scheduleReconnect(); } } }, 1500);
+          }
           function openConn() {
             const conn = peer.connect(PID(code), { reliable: true }); self.hostConn = conn;
-            conn.on("open", () => { reconnecting = false; if (!ready) { ok(code); onJoin && onJoin(PID(code)); } });
+            conn.on("open", () => { if (!ready) { ok(code); onJoin && onJoin(PID(code)); } });
             conn.on("data", (d) => onState && onState(PID(code), d));
-            const retry = () => { if (self._left || reconnecting) return; reconnecting = true;
-              setTimeout(() => { if (!self._left && self.peer && !self.peer.destroyed) { try { openConn(); } catch (e) { reconnecting = false; } } }, 1500); };
-            conn.on("close", retry);
-            conn.on("error", retry);
+            conn.on("close", scheduleReconnect);
+            conn.on("error", scheduleReconnect);
           }
           peer.on("open", (id) => { self.myId = id; openConn(); });
         }
@@ -528,6 +532,7 @@
       weapon: "knife", gun: null, ammo: 0, reloading: 0, fireCd: 0, knifeCd: 0, swing: 0, hurtFlash: 0 };
     $("title").hidden = true; $("dead").hidden = true; $("shop").hidden = true;
     $("hud").hidden = false; $("touch").hidden = false;
+    requestWakeLock();
   }
   function die(reason) {
     if (G.mp.on && G.player) { // 멀티: 죽으면 쓰러짐(다운) — 동료가 메디킷/의무병으로 부활
@@ -774,6 +779,14 @@
       src.start(now); src.stop(now + dur);
     } catch (e) {}
   }
+  // ----- keep screen awake during play (mobile disconnect prevention) -----
+  let wakeLock = null;
+  async function requestWakeLock() {
+    try { if (navigator.wakeLock && document.visibilityState === "visible") { wakeLock = await navigator.wakeLock.request("screen"); } } catch (e) {}
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && G.state === "playing") requestWakeLock();
+  });
   // ----- knife button: swing & attack toward nearest zombie -----
   function meleeAttack() {
     if (!G.player || G.state !== "playing") return;
